@@ -31,7 +31,9 @@ ubuntuNN ──quest──► handoff ──► (linux prepare_phase2)
 
 ## Homelab dry-run (1 Linux + 1 Windows)
 
-Use hostnames `ubuntu01` / `win19_srv01` (or any names ending in digits).
+**Full walkthrough (VMware, static IPs, users, Salt):** see **[HOMELAB.md](HOMELAB.md)**.
+
+Short version — use hostnames `ubuntu01` / `win19_srv01` (or any names ending in digits).
 
 ```bash
 # On mentor/scoreboard host
@@ -88,11 +90,13 @@ Same commands work for a single homelab pair.
 
 | Path | Role |
 |------|------|
+| [`HOMELAB.md`](HOMELAB.md) | **Detailed VMware homelab setup** (IPs, hostnames, users, Salt) |
+| [`homelab/`](homelab/) | **Setup scripts** for Kali / Ubuntu / Windows base config |
 | [`linux/`](linux/) | Phase-1 setup, quest, Phase-2 prep, score agent |
 | [`windows/`](windows/) | Same for Windows Server |
 | [`scoreboard/`](scoreboard/) | Live team board (Flask + SSE) |
 | [`salt/`](salt/) | State + pillar examples |
-| [`ANSWER_KEY.txt`](ANSWER_KEY.txt) | Mentor-only plants + finding IDs |
+| [`ANSWER_KEY.txt`](ANSWER_KEY.txt) | Mentor-only plants + finding IDs (local; not on public GitHub) |
 | [`systemHardeningMeetingOutline.pdf`](systemHardeningMeetingOutline.pdf) | Meeting outline |
 
 ## Meeting tip
