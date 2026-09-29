@@ -1,0 +1,8 @@
+# Example top.sls fragment — merge into your master's top.sls
+base:
+  'role:hardening-linux':
+    - match: grain
+    - hardening-lab
+  'role:hardening-windows':
+    - match: grain
+    - hardening-lab

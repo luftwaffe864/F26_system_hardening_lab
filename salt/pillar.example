@@ -1,0 +1,23 @@
+# DCIG System Hardening — Salt pillar example
+#
+# On the master, copy/symlink this lab to:
+#   /srv/salt/F26_system_hardening_lab
+#
+# Minion grains (one each for the student pair):
+#   role: hardening-linux     # ubuntu01 .. ubuntu30
+#   role: hardening-windows   # win19_srv01 .. win19_srv30
+#
+# Homelab dry-run (single pair):
+#   salt 'ubuntu01' grains.setval role hardening-linux
+#   salt 'win19_srv01' grains.setval role hardening-windows
+#   salt -G 'role:hardening-linux' state.apply hardening-lab
+#   salt -G 'role:hardening-windows' state.apply hardening-lab
+#
+# Or copy salt/hardening-lab.sls into the master's file_roots as hardening-lab.sls
+# and point source salt://F26_system_hardening_lab accordingly.
+
+hardening_lab:
+  files_root: /srv/salt/F26_system_hardening_lab
+  scoreboard_url: http://10.0.0.5:8080
+  secret: dcig-hardening-2026
+  student_password: Hardening2026!

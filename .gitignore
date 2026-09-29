@@ -1,0 +1,12 @@
+# Mentor-only — keep out of the public GitHub mirror
+ANSWER_KEY.txt
+
+# Python / OS junk
+__pycache__/
+*.pyc
+.venv/
+venv/
+.DS_Store
+Thumbs.db
+*.bak
+scoreboard.env

@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>DCIG · System Hardening Scoreboard</title>
+  <style>
+    :root {
+      --bg: #0b1220;
+      --panel: #121a2b;
+      --text: #e8eefc;
+      --muted: #8b9bb8;
+      --accent: #3dd6c6;
+      --warn: #f0b429;
+      --line: #243049;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", "IBM Plex Sans", system-ui, sans-serif;
+      background: radial-gradient(1200px 600px at 20% -10%, #1a2744 0%, var(--bg) 55%);
+      color: var(--text);
+      min-height: 100vh;
+    }
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+      padding: 1.5rem 2rem 1rem;
+      border-bottom: 1px solid var(--line);
+    }
+    h1 {
+      margin: 0;
+      font-size: clamp(1.4rem, 2.5vw, 2.2rem);
+      letter-spacing: 0.04em;
+    }
+    .sub { color: var(--muted); margin-top: 0.35rem; font-size: 0.95rem; }
+    .badges { display: flex; gap: 0.6rem; flex-wrap: wrap; justify-content: flex-end; }
+    .badge {
+      border: 1px solid var(--line);
+      background: var(--panel);
+      padding: 0.4rem 0.75rem;
+      border-radius: 999px;
+      font-size: 0.85rem;
+      color: var(--muted);
+    }
+    .badge.on { color: var(--accent); border-color: #1f6f66; }
+    .badge.frozen { color: var(--warn); border-color: #7a5b12; }
+    main { padding: 1.25rem 2rem 2rem; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: color-mix(in srgb, var(--panel) 92%, black);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      overflow: hidden;
+    }
+    th, td {
+      padding: 0.85rem 1rem;
+      text-align: left;
+      border-bottom: 1px solid var(--line);
+    }
+    th {
+      color: var(--muted);
+      font-weight: 600;
+      font-size: 0.8rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      background: #0e1626;
+    }
+    tr:last-child td { border-bottom: none; }
+    tr.top td { background: linear-gradient(90deg, #16322e, transparent); }
+    .rank { font-variant-numeric: tabular-nums; color: var(--accent); font-weight: 700; width: 4rem; }
+    .team { font-size: 1.25rem; font-weight: 700; }
+    .pts { font-variant-numeric: tabular-nums; font-size: 1.15rem; }
+    .split { color: var(--muted); font-variant-numeric: tabular-nums; }
+    .empty {
+      margin-top: 3rem;
+      text-align: center;
+      color: var(--muted);
+      font-size: 1.1rem;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <h1>DCIG System Hardening</h1>
+      <div class="sub">CyberPatriot-style team race · Linux + Windows combined</div>
+    </div>
+    <div class="badges">
+      <div class="badge" id="phaseBadge">Phase 2: closed</div>
+      <div class="badge" id="freezeBadge">Live</div>
+      <div class="badge" id="countBadge">0 teams</div>
+    </div>
+  </header>
+  <main>
+    <table>
+      <thead>
+        <tr>
+          <th>Rank</th>
+          <th>Team</th>
+          <th>Total</th>
+          <th>Linux</th>
+          <th>Windows</th>
+          <th>Ready</th>
+        </tr>
+      </thead>
+      <tbody id="rows"></tbody>
+    </table>
+    <div class="empty" id="empty">Waiting for Phase 2 scores…</div>
+  </main>
+  <script>
+    const rows = document.getElementById('rows');
+    const empty = document.getElementById('empty');
+    const phaseBadge = document.getElementById('phaseBadge');
+    const freezeBadge = document.getElementById('freezeBadge');
+    const countBadge = document.getElementById('countBadge');
+
+    function render(data) {
+      phaseBadge.textContent = data.phase2_open ? 'Phase 2: OPEN' : 'Phase 2: closed';
+      phaseBadge.classList.toggle('on', !!data.phase2_open);
+      freezeBadge.textContent = data.frozen ? 'FROZEN' : 'Live';
+      freezeBadge.classList.toggle('frozen', !!data.frozen);
+      const teams = data.teams || [];
+      countBadge.textContent = teams.length + ' team' + (teams.length === 1 ? '' : 's');
+      rows.innerHTML = '';
+      if (!teams.length) {
+        empty.style.display = 'block';
+        return;
+      }
+      empty.style.display = 'none';
+      for (const t of teams) {
+        const tr = document.createElement('tr');
+        if (t.rank <= 3) tr.classList.add('top');
+        const ready = [];
+        if (t.ready_linux) ready.push('L');
+        if (t.ready_windows) ready.push('W');
+        tr.innerHTML = `
+          <td class="rank">#${t.rank}</td>
+          <td class="team">Team ${t.team}</td>
+          <td class="pts">${t.total}</td>
+          <td class="split">${t.linux}</td>
+          <td class="split">${t.windows}</td>
+          <td class="split">${ready.join('+') || '—'}</td>`;
+        rows.appendChild(tr);
+      }
+    }
+
+    async function refresh() {
+      try {
+        const r = await fetch('/api/status');
+        render(await r.json());
+      } catch (e) {}
+    }
+
+    if (window.EventSource) {
+      const es = new EventSource('/api/stream');
+      es.onmessage = (ev) => {
+        try { render(JSON.parse(ev.data)); } catch (e) {}
+      };
+      es.onerror = () => { /* polling fallback keeps working */ };
+    }
+    refresh();
+    setInterval(refresh, 5000);
+  </script>
+</body>
+</html>
