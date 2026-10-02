@@ -1,6 +1,7 @@
 <#
 ================================================================================
  DCIG System Hardening — Windows score agent (Phase 2)
+ Machine-state checks only — no typed answers.
 ================================================================================
 #>
 $ErrorActionPreference = 'SilentlyContinue'
@@ -38,7 +39,28 @@ function Post-Finding([string]$Fid, [int]$Pts) {
     } catch {}
 }
 
-# W2-01 sysmaint not admin / deleted (15)
+function Test-NoTask([string]$Name) {
+    $taskOut = cmd /c "schtasks /Query /TN `"$Name`" 2>&1"
+    return ($taskOut -match 'ERROR|cannot find|does not exist' -or $LASTEXITCODE -ne 0)
+}
+
+function Test-FwGoneOrOff([string]$DisplayName) {
+    $r = Get-NetFirewallRule -DisplayName $DisplayName -EA SilentlyContinue
+    return (-not $r -or (@($r | Where-Object Enabled -eq 'True').Count -eq 0))
+}
+
+# --- EASY ---
+if (-not (Get-LocalUser -Name 'oldintern' -EA SilentlyContinue)) { Post-Finding 'W2-02' 10 }
+
+$guest = Get-LocalUser -Name 'Guest' -EA SilentlyContinue
+if ($guest -and -not $guest.Enabled) { Post-Finding 'W2-09' 10 }
+elseif (-not $guest) { Post-Finding 'W2-09' 10 }
+
+if (-not (Test-Path 'C:\Program Files\ChromeUpdater')) { Post-Finding 'W2-07' 10 }
+if (-not (Test-Path 'C:\Program Files\FreeGameLauncher')) { Post-Finding 'W2-10' 10 }
+if (-not (Test-Path 'C:\Users\student\Desktop\passwords.txt')) { Post-Finding 'W2-11' 10 }
+
+# --- MEDIUM ---
 $sys = Get-LocalUser -Name 'sysmaint' -EA SilentlyContinue
 if (-not $sys) { Post-Finding 'W2-01' 15 }
 else {
@@ -46,38 +68,62 @@ else {
     if ($admins -notcontains 'sysmaint') { Post-Finding 'W2-01' 15 }
 }
 
-# W2-02 oldintern removed (10)
-if (-not (Get-LocalUser -Name 'oldintern' -EA SilentlyContinue)) { Post-Finding 'W2-02' 10 }
+if (Test-NoTask 'SystemUpdateCheck') { Post-Finding 'W2-03' 15 }
+if (Test-FwGoneOrOff 'Legacy Backup Port') { Post-Finding 'W2-05' 15 }
 
-# W2-03 scheduled task gone (15)
-$taskOut = cmd /c "schtasks /Query /TN SystemUpdateCheck 2>&1"
-if ($taskOut -match 'ERROR|cannot find|does not exist' -or $LASTEXITCODE -ne 0) {
-    Post-Finding 'W2-03' 15
-}
-
-# W2-04 NetHelper Run key gone (20)
-$nk = (Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run' -EA SilentlyContinue).NetHelper
-if ([string]::IsNullOrEmpty($nk)) { Post-Finding 'W2-04' 20 }
-
-# W2-05 firewall rule gone/disabled (15)
-$r = Get-NetFirewallRule -DisplayName 'Legacy Backup Port' -EA SilentlyContinue
-if (-not $r -or (@($r | Where-Object Enabled -eq 'True').Count -eq 0)) { Post-Finding 'W2-05' 15 }
-
-# W2-06 Defender RTP on (15)
 try {
     $p = Get-MpPreference
     if (-not $p.DisableRealtimeMonitoring) { Post-Finding 'W2-06' 15 }
 } catch {}
 
-# W2-07 ChromeUpdater removed (10)
-if (-not (Test-Path 'C:\Program Files\ChromeUpdater')) { Post-Finding 'W2-07' 10 }
-
-# W2-08 backup_creds fixed/removed (10)
 $path = 'C:\CaseFiles\backup_creds.txt'
 if (-not (Test-Path $path)) { Post-Finding 'W2-08' 10 }
 else {
     $acl = Get-Acl $path
     if (-not ($acl.Access | Where-Object { $_.IdentityReference -match 'Everyone' })) {
         Post-Finding 'W2-08' 10
+    }
+}
+
+$wl = Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon' -EA SilentlyContinue
+# Fixed when AutoAdminLogon is not enabled and DefaultPassword is cleared
+if ($null -eq $wl -or (($wl.AutoAdminLogon -ne '1') -and [string]::IsNullOrEmpty([string]$wl.DefaultPassword))) {
+    Post-Finding 'W2-12' 20
+}
+
+if (Test-FwGoneOrOff 'Vendor Support Tunnel') { Post-Finding 'W2-13' 15 }
+
+$hd = Get-LocalUser -Name 'helpdesk' -EA SilentlyContinue
+if (-not $hd) { Post-Finding 'W2-14' 15 }
+else {
+    $admins = Get-LocalGroupMember Administrators | ForEach-Object { $_.Name.Split('\')[-1].ToLower() }
+    if ($admins -notcontains 'helpdesk') { Post-Finding 'W2-14' 15 }
+}
+
+# --- HARD ---
+$nk = (Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run' -EA SilentlyContinue).NetHelper
+if ([string]::IsNullOrEmpty($nk)) { Post-Finding 'W2-04' 20 }
+
+if (-not (Test-Path 'C:\ProgramData\Microsoft\Windows\Start Menu\Programs\StartUp\SecurityUpdate.bat')) {
+    Post-Finding 'W2-15' 15
+}
+
+$ro = (Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\RunOnce' -EA SilentlyContinue).FlushCache
+if ([string]::IsNullOrEmpty($ro)) { Post-Finding 'W2-16' 15 }
+
+if (Test-NoTask 'WindowsHealthMonitor') { Post-Finding 'W2-17' 20 }
+
+$svc = Get-Service -Name 'HLWinUpd' -EA SilentlyContinue
+if (-not $svc) { Post-Finding 'W2-18' 25 }
+elseif ($svc.Status -ne 'Running' -and $svc.StartType -eq 'Disabled') { Post-Finding 'W2-18' 25 }
+# Also accept deleted service only (stopped but still present is not enough for full points unless disabled)
+elseif ($svc.StartType -eq 'Disabled') { Post-Finding 'W2-18' 25 }
+
+$sec = 'C:\ProgramData\app_secrets.ini'
+if (-not (Test-Path $sec)) { Post-Finding 'W2-19' 15 }
+else {
+    $acl = Get-Acl $sec
+    if (-not ($acl.Access | Where-Object { $_.IdentityReference -match 'Everyone' })) {
+        Post-Finding 'W2-19' 15
     }
 }
