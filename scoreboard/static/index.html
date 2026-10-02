@@ -11,31 +11,38 @@
       --text: #e8eefc;
       --muted: #8b9bb8;
       --accent: #3dd6c6;
+      --linux: #5b9dff;
+      --windows: #7ec8a3;
       --warn: #f0b429;
       --line: #243049;
     }
     * { box-sizing: border-box; }
+    html, body { height: 100%; }
     body {
       margin: 0;
       font-family: "Segoe UI", "IBM Plex Sans", system-ui, sans-serif;
       background: radial-gradient(1200px 600px at 20% -10%, #1a2744 0%, var(--bg) 55%);
       color: var(--text);
-      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
     }
     header {
+      flex: 0 0 auto;
       display: flex;
       justify-content: space-between;
       align-items: flex-end;
-      padding: 1.5rem 2rem 1rem;
+      gap: 1rem;
+      padding: 1.25rem 2rem 1rem;
       border-bottom: 1px solid var(--line);
     }
     h1 {
       margin: 0;
-      font-size: clamp(1.4rem, 2.5vw, 2.2rem);
+      font-size: clamp(1.3rem, 2.4vw, 2rem);
       letter-spacing: 0.04em;
     }
     .sub { color: var(--muted); margin-top: 0.35rem; font-size: 0.95rem; }
-    .badges { display: flex; gap: 0.6rem; flex-wrap: wrap; justify-content: flex-end; }
+    .badges { display: flex; gap: 0.6rem; flex-wrap: wrap; justify-content: flex-end; align-items: center; }
     .badge {
       border: 1px solid var(--line);
       background: var(--panel);
@@ -46,106 +53,312 @@
     }
     .badge.on { color: var(--accent); border-color: #1f6f66; }
     .badge.frozen { color: var(--warn); border-color: #7a5b12; }
-    main { padding: 1.25rem 2rem 2rem; }
+    .badge.max {
+      color: var(--text);
+      border-color: #3a4f78;
+      font-variant-numeric: tabular-nums;
+      font-weight: 700;
+    }
+    .badge.max span { color: var(--accent); }
+    main {
+      flex: 1 1 auto;
+      min-height: 0;
+      padding: 1rem 2rem 1.25rem;
+      display: flex;
+      flex-direction: column;
+    }
+    .board {
+      flex: 1 1 auto;
+      min-height: 0;
+      overflow: auto;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: color-mix(in srgb, var(--panel) 92%, black);
+      scrollbar-gutter: stable;
+    }
+    .board::-webkit-scrollbar { width: 10px; }
+    .board::-webkit-scrollbar-thumb { background: #314260; border-radius: 8px; }
     table {
       width: 100%;
       border-collapse: collapse;
-      background: color-mix(in srgb, var(--panel) 92%, black);
-      border: 1px solid var(--line);
-      border-radius: 12px;
-      overflow: hidden;
     }
     th, td {
-      padding: 0.85rem 1rem;
+      padding: 0.75rem 1rem;
       text-align: left;
       border-bottom: 1px solid var(--line);
     }
-    th {
+    thead th {
+      position: sticky;
+      top: 0;
+      z-index: 2;
       color: var(--muted);
       font-weight: 600;
-      font-size: 0.8rem;
+      font-size: 0.78rem;
       text-transform: uppercase;
       letter-spacing: 0.08em;
       background: #0e1626;
     }
-    tr:last-child td { border-bottom: none; }
+    tbody tr:hover td { background: rgba(255,255,255,0.03); }
     tr.top td { background: linear-gradient(90deg, #16322e, transparent); }
-    .rank { font-variant-numeric: tabular-nums; color: var(--accent); font-weight: 700; width: 4rem; }
-    .team { font-size: 1.25rem; font-weight: 700; }
-    .pts { font-variant-numeric: tabular-nums; font-size: 1.15rem; }
-    .split { color: var(--muted); font-variant-numeric: tabular-nums; }
-    .empty {
-      margin-top: 3rem;
-      text-align: center;
-      color: var(--muted);
-      font-size: 1.1rem;
+    .user {
+      font-size: 1.15rem;
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+      width: 28%;
     }
+    .rank-mini {
+      display: block;
+      margin-top: 0.15rem;
+      color: var(--muted);
+      font-size: 0.75rem;
+      font-weight: 600;
+    }
+    .pts {
+      font-variant-numeric: tabular-nums;
+      font-size: 1.2rem;
+      font-weight: 700;
+    }
+    .os-pts {
+      font: inherit;
+      font-variant-numeric: tabular-nums;
+      font-size: 1.15rem;
+      font-weight: 600;
+      cursor: pointer;
+      user-select: none;
+      border-radius: 8px;
+      padding: 0.25rem 0.55rem;
+      display: inline-block;
+      border: 1px solid transparent;
+      background: transparent;
+      color: inherit;
+      transition: border-color 0.15s, background 0.15s;
+    }
+    .os-pts.linux { color: var(--linux); }
+    .os-pts.windows { color: var(--windows); }
+    .os-pts:hover, .os-pts:focus-visible {
+      outline: none;
+      border-color: var(--line);
+      background: rgba(255,255,255,0.05);
+    }
+    .os-pts.zero { color: var(--muted); cursor: default; }
+    .os-pts.zero:hover { border-color: transparent; background: transparent; }
+    .hint-note {
+      flex: 0 0 auto;
+      margin-top: 0.65rem;
+      color: var(--muted);
+      font-size: 0.82rem;
+    }
+    .overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(4, 8, 16, 0.72);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 1.5rem;
+      z-index: 20;
+    }
+    .overlay.open { display: flex; }
+    .panel {
+      width: min(520px, 100%);
+      max-height: min(70vh, 640px);
+      overflow: auto;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 1.1rem 1.25rem 1.25rem;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.45);
+    }
+    .panel h2 {
+      margin: 0 0 0.25rem;
+      font-size: 1.15rem;
+    }
+    .panel .meta {
+      color: var(--muted);
+      font-size: 0.85rem;
+      margin-bottom: 0.9rem;
+    }
+    .panel ul {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+    }
+    .panel li {
+      display: flex;
+      justify-content: space-between;
+      gap: 1rem;
+      padding: 0.65rem 0;
+      border-top: 1px solid var(--line);
+      font-size: 0.95rem;
+    }
+    .panel li .pts-tag {
+      flex: 0 0 auto;
+      color: var(--accent);
+      font-variant-numeric: tabular-nums;
+      font-weight: 700;
+    }
+    .panel .empty-findings {
+      color: var(--muted);
+      padding: 0.5rem 0 0.25rem;
+    }
+    .panel-actions {
+      margin-top: 1rem;
+      display: flex;
+      justify-content: flex-end;
+    }
+    .panel-actions button {
+      background: #1a2744;
+      color: var(--text);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 0.45rem 0.9rem;
+      cursor: pointer;
+      font: inherit;
+    }
+    .panel-actions button:hover { border-color: var(--accent); }
   </style>
 </head>
 <body>
   <header>
     <div>
       <h1>DCIG System Hardening</h1>
-      <div class="sub">CyberPatriot-style team race · Linux + Windows combined</div>
+      <div class="sub">Phase 2 race · click Linux or Windows points for broad fix hints</div>
     </div>
     <div class="badges">
       <div class="badge" id="phaseBadge">Phase 2: closed</div>
       <div class="badge" id="freezeBadge">Live</div>
-      <div class="badge" id="countBadge">0 teams</div>
+      <div class="badge max" id="maxBadge">Max: <span>—</span></div>
     </div>
   </header>
   <main>
-    <table>
-      <thead>
-        <tr>
-          <th>Rank</th>
-          <th>Team</th>
-          <th>Total</th>
-          <th>Linux</th>
-          <th>Windows</th>
-          <th>Ready</th>
-        </tr>
-      </thead>
-      <tbody id="rows"></tbody>
-    </table>
-    <div class="empty" id="empty">Waiting for Phase 2 scores…</div>
+    <div class="board">
+      <table>
+        <thead>
+          <tr>
+            <th>User</th>
+            <th>Linux</th>
+            <th>Windows</th>
+            <th>Total</th>
+          </tr>
+        </thead>
+        <tbody id="rows"></tbody>
+      </table>
+    </div>
+    <div class="hint-note">Hints are category-level only — they will not tell you exactly what to change.</div>
   </main>
+
+  <div class="overlay" id="overlay" role="dialog" aria-modal="true" aria-labelledby="panelTitle">
+    <div class="panel">
+      <h2 id="panelTitle">Findings</h2>
+      <div class="meta" id="panelMeta"></div>
+      <ul id="panelList"></ul>
+      <div class="panel-actions">
+        <button type="button" id="closePanel">Close</button>
+      </div>
+    </div>
+  </div>
+
   <script>
     const rows = document.getElementById('rows');
-    const empty = document.getElementById('empty');
     const phaseBadge = document.getElementById('phaseBadge');
     const freezeBadge = document.getElementById('freezeBadge');
-    const countBadge = document.getElementById('countBadge');
+    const maxBadge = document.getElementById('maxBadge');
+    const overlay = document.getElementById('overlay');
+    const panelTitle = document.getElementById('panelTitle');
+    const panelMeta = document.getElementById('panelMeta');
+    const panelList = document.getElementById('panelList');
+    const closePanel = document.getElementById('closePanel');
+
+    let latestTeams = [];
+
+    function closeHints() {
+      overlay.classList.remove('open');
+    }
+
+    function openHints(teamId, osName) {
+      const t = latestTeams.find((x) => x.team === teamId);
+      if (!t) return;
+      const findings = osName === 'linux' ? (t.linux_findings || []) : (t.windows_findings || []);
+      const score = osName === 'linux' ? t.linux : t.windows;
+      const label = osName === 'linux' ? 'Linux' : 'Windows';
+      panelTitle.textContent = `${t.name} · ${label}`;
+      panelMeta.textContent = `${score} pts earned · ${findings.length} issue${findings.length === 1 ? '' : 's'} fixed`;
+      panelList.innerHTML = '';
+      if (!findings.length) {
+        const li = document.createElement('li');
+        li.className = 'empty-findings';
+        li.textContent = 'No scored fixes on this OS yet.';
+        panelList.appendChild(li);
+      } else {
+        for (const f of findings) {
+          const li = document.createElement('li');
+          li.innerHTML = `<span>${f.hint}</span><span class="pts-tag">+${f.points}</span>`;
+          panelList.appendChild(li);
+        }
+      }
+      overlay.classList.add('open');
+    }
 
     function render(data) {
       phaseBadge.textContent = data.phase2_open ? 'Phase 2: OPEN' : 'Phase 2: closed';
       phaseBadge.classList.toggle('on', !!data.phase2_open);
       freezeBadge.textContent = data.frozen ? 'FROZEN' : 'Live';
       freezeBadge.classList.toggle('frozen', !!data.frozen);
-      const teams = data.teams || [];
-      countBadge.textContent = teams.length + ' team' + (teams.length === 1 ? '' : 's');
+
+      const maxPts = data.max_points ?? '—';
+      const maxL = data.max_linux ?? '';
+      const maxW = data.max_windows ?? '';
+      maxBadge.innerHTML = maxL !== '' && maxW !== ''
+        ? `Max: <span>${maxPts}</span> <span style="color:var(--muted);font-weight:600">(L${maxL} + W${maxW})</span>`
+        : `Max: <span>${maxPts}</span>`;
+
+      latestTeams = data.teams || [];
       rows.innerHTML = '';
-      if (!teams.length) {
-        empty.style.display = 'block';
-        return;
-      }
-      empty.style.display = 'none';
-      for (const t of teams) {
+      for (const t of latestTeams) {
         const tr = document.createElement('tr');
-        if (t.rank <= 3) tr.classList.add('top');
-        const ready = [];
-        if (t.ready_linux) ready.push('L');
-        if (t.ready_windows) ready.push('W');
-        tr.innerHTML = `
-          <td class="rank">#${t.rank}</td>
-          <td class="team">Team ${t.team}</td>
-          <td class="pts">${t.total}</td>
-          <td class="split">${t.linux}</td>
-          <td class="split">${t.windows}</td>
-          <td class="split">${ready.join('+') || '—'}</td>`;
+        if (t.rank <= 3 && t.total > 0) tr.classList.add('top');
+
+        const userTd = document.createElement('td');
+        userTd.className = 'user';
+        userTd.innerHTML = `${t.name}<span class="rank-mini">#${t.rank}</span>`;
+
+        const linTd = document.createElement('td');
+        const linBtn = document.createElement('button');
+        linBtn.type = 'button';
+        linBtn.className = 'os-pts linux' + (t.linux ? '' : ' zero');
+        linBtn.textContent = t.linux;
+        linBtn.title = t.linux ? 'Show Linux fixes (broad hints)' : 'No Linux points yet';
+        if (t.linux) linBtn.addEventListener('click', () => openHints(t.team, 'linux'));
+        linTd.appendChild(linBtn);
+
+        const winTd = document.createElement('td');
+        const winBtn = document.createElement('button');
+        winBtn.type = 'button';
+        winBtn.className = 'os-pts windows' + (t.windows ? '' : ' zero');
+        winBtn.textContent = t.windows;
+        winBtn.title = t.windows ? 'Show Windows fixes (broad hints)' : 'No Windows points yet';
+        if (t.windows) winBtn.addEventListener('click', () => openHints(t.team, 'windows'));
+        winTd.appendChild(winBtn);
+
+        const totTd = document.createElement('td');
+        totTd.className = 'pts';
+        totTd.textContent = t.total;
+
+        tr.appendChild(userTd);
+        tr.appendChild(linTd);
+        tr.appendChild(winTd);
+        tr.appendChild(totTd);
         rows.appendChild(tr);
       }
     }
+
+    closePanel.addEventListener('click', closeHints);
+    overlay.addEventListener('click', (e) => {
+      if (e.target === overlay) closeHints();
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') closeHints();
+    });
 
     async function refresh() {
       try {
@@ -159,7 +372,7 @@
       es.onmessage = (ev) => {
         try { render(JSON.parse(ev.data)); } catch (e) {}
       };
-      es.onerror = () => { /* polling fallback keeps working */ };
+      es.onerror = () => {};
     }
     refresh();
     setInterval(refresh, 5000);
