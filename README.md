@@ -15,20 +15,20 @@ Each student gets a paired box set on an **isolated `192.168.1.0/24`** (range op
 
 ## Student flow
 
-1. Start on **Linux** → run `hardening-quest`
-2. Linux quest end → **Phase 2 prep auto-starts on Linux**; go to matching **Windows** box
-3. On Windows → run `hardening-quest`
-4. Windows quest end → **Phase 2 prep auto-starts** (“please wait…”) — student does not run prep scripts
-5. Mentors **open Phase 2** on the scoreboard → students harden both boxes; agents post points under Team NN
+1. **Linux tool drill** (~10 min) → `hardening-quest` — learn commands, not a full IR story
+2. Drill ends → **Phase 2 prep auto-starts on Linux**; go to matching **Windows** box
+3. **Windows tool drill** (~10 min) → `hardening-quest`
+4. Drill ends → **Phase 2 prep auto-starts** on Windows
+5. Mentors **open Phase 2** → CyberPatriot-style race (most of the meeting time)
 
 ```text
-ubuntuNN ──quest──► handoff ──► (linux prepare_phase2)
-                         │
-                         ▼
-              win19_srvNN ──quest──► wait/prepare_phase2
-                         │
-                         ▼
-              Phase 2 find-and-fix (both) ──► live scoreboard
+ubuntuNN ──~10m drill──► handoff + linux prepare_phase2
+                              │
+                              ▼
+                   win19_srvNN ──~10m drill──► prepare_phase2
+                              │
+                              ▼
+                   Phase 2 find-and-fix (majority of time) ──► live scoreboard
 ```
 
 ## Homelab dry-run (1 Linux + 1 Windows)
