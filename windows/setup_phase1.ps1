@@ -84,6 +84,11 @@ foreach ($f in @('hardening_quest.ps1','prepare_phase2.ps1','score_agent.ps1')) 
         Say "installed $f"
     }
 }
+# Keep shortcut helper on the box for mentors / re-runs
+$scSrc = Join-Path (Split-Path $here -Parent) 'scripts\Make-ScoreboardShortcut.ps1'
+if (Test-Path $scSrc) {
+    Copy-Item $scSrc (Join-Path $LabRoot 'Make-ScoreboardShortcut.ps1') -Force
+}
 
 # student account
 $sec = ConvertTo-SecureString $StudentPassword -AsPlainText -Force
@@ -224,6 +229,25 @@ try {
 }
 Say 'installed HardeningPreparePhase2 on-demand task'
 
+# Desktop scoreboard shortcut (double-click → browser)
+$scCandidates = @(
+    (Join-Path (Split-Path $here -Parent) 'scripts\Make-ScoreboardShortcut.ps1'),
+    (Join-Path $LabRoot 'Make-ScoreboardShortcut.ps1')
+)
+$scHit = $scCandidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+if ($scHit) {
+    & $scHit -Url $ScoreboardUrl -AlsoUserDesktop 'student'
+    Say "scoreboard Desktop shortcut -> $ScoreboardUrl"
+} else {
+    $urlClean = $ScoreboardUrl.TrimEnd('/') + '/'
+    foreach ($desk in @((Join-Path $env:PUBLIC 'Desktop'), 'C:\Users\student\Desktop')) {
+        New-Item -ItemType Directory -Force -Path $desk | Out-Null
+        "[InternetShortcut]`r`nURL=$urlClean`r`n" | Set-Content (Join-Path $desk 'DCIG Scoreboard.url') -Encoding ASCII
+    }
+    Say "scoreboard shortcut (inline) -> $urlClean"
+}
+
 Say "Quest: $LabRoot\hardening_quest.ps1  (or bin\hardening-quest.cmd)"
 Say "Student login: student / $StudentPassword"
 Say 'Phase 1 complete.'
+

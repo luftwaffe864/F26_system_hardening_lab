@@ -34,4 +34,9 @@ else
 fi
 
 echo "[scoreboard] http://$(hostname -I 2>/dev/null | awk '{print $1}'):$PORT/  (bind $BIND)"
+# Refresh Desktop shortcut to this host
+IP="$(hostname -I 2>/dev/null | awk '{print $1}')"
+if [[ -n "$IP" && -f "$ROOT/scripts/make_scoreboard_shortcut.sh" ]]; then
+  bash "$ROOT/scripts/make_scoreboard_shortcut.sh" "http://${IP}:${PORT}/" "${SUDO_USER:-$(id -un)}" || true
+fi
 exec python server.py

@@ -160,6 +160,20 @@ DONE
   Hostname : $Hostname  (current: $env:COMPUTERNAME)
   IP       : $IPAddress/$PrefixLength
   Student  : NOT created yet (run windows\setup_phase1.ps1 for that)
+"@
+
+# Scoreboard Desktop shortcut (Public Desktop) → browser
+$repoRoot = Split-Path -Parent $PSScriptRoot
+$sc = Join-Path $repoRoot 'scripts\Make-ScoreboardShortcut.ps1'
+$sbUrl = "http://$($KaliIp):8080/"
+if (Test-Path $sc) {
+    & $sc -Url $sbUrl
+    Say "scoreboard Desktop shortcut -> $sbUrl"
+} else {
+    Warn "Make-ScoreboardShortcut.ps1 not found; Phase-1 setup will still add shortcuts."
+}
+
+Say @"
 
 Next:
   1) Reboot if the hostname changed
@@ -168,6 +182,7 @@ Next:
        .\windows\setup_phase1.ps1 -ScoreboardUrl 'http://$KaliIp`:8080' -Secret 'dcig-hardening-2026'
   4) Login as .\student / Hardening2026!
   5) Run C:\HardeningLab\hardening_quest.ps1
+     Double-click Desktop "DCIG Scoreboard" anytime to view the live board
 "@
 
 if ($needReboot) {

@@ -61,6 +61,9 @@ install_game() {
   install -m 755 "$ROOT/prepare_phase2.sh" "$LIB/prepare_phase2.sh"
   install -m 755 "$ROOT/score_agent.sh" "$LIB/score_agent.sh"
   install -m 755 "$SELF" "$LIB/setup_phase1.sh"
+  if [[ -f "$ROOT/../scripts/make_scoreboard_shortcut.sh" ]]; then
+    install -m 755 "$ROOT/../scripts/make_scoreboard_shortcut.sh" "$LIB/make_scoreboard_shortcut.sh"
+  fi
   # convenience symlink for prepare
   ln -sfn "$LIB/prepare_phase2.sh" /usr/local/sbin/hardening-prepare-phase2
 
@@ -199,7 +202,27 @@ main() {
   plant_files
   plant_service_and_process
   plant_firewall
+  # Desktop shortcut → open scoreboard in browser (double-click)
+  SHORTCUT_SRC="$ROOT/../scripts/make_scoreboard_shortcut.sh"
+  if [[ -f "$LIB/make_scoreboard_shortcut.sh" ]]; then
+    bash "$LIB/make_scoreboard_shortcut.sh" "$SCOREBOARD_URL" "$STUDENT" || true
+  elif [[ -f "$SHORTCUT_SRC" ]]; then
+    bash "$SHORTCUT_SRC" "$SCOREBOARD_URL" "$STUDENT" || true
+  elif [[ -f "$ROOT/scripts/make_scoreboard_shortcut.sh" ]]; then
+    bash "$ROOT/scripts/make_scoreboard_shortcut.sh" "$SCOREBOARD_URL" "$STUDENT" || true
+  else
+    # Inline fallback if scripts/ not next to linux/
+    install -d -m 755 "/home/$STUDENT/Desktop"
+    cat > "/home/$STUDENT/Desktop/DCIG Scoreboard.html" <<EOF
+<!DOCTYPE html><html><head>
+<meta http-equiv="refresh" content="0;url=${SCOREBOARD_URL%/}/"/>
+<script>location.replace("${SCOREBOARD_URL%/}/");</script>
+</head><body><a href="${SCOREBOARD_URL%/}/">Open scoreboard</a></body></html>
+EOF
+    chown -R "$STUDENT:$STUDENT" "/home/$STUDENT/Desktop"
+  fi
   log "done. Student: $STUDENT / $STUDENT_PW"
+  log "Scoreboard shortcut on Desktop (DCIG Scoreboard.html) -> $SCOREBOARD_URL"
   log "Start quest: sudo -u $STUDENT -i hardening-quest"
   if [[ "$SWITCH" -eq 1 && -t 0 ]]; then
     exec su - "$STUDENT" -c hardening-quest

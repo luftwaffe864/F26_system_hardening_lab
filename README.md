@@ -90,6 +90,7 @@ Details: **[RANGE.md](RANGE.md)**. Homelab VMware setup (where you *do* set IPs)
 | [`RANGE.md`](RANGE.md) | **Cyber range** pod layout (`192.168.1.0/24`, Salt, scoreboard) |
 | [`config/range.env.example`](config/range.env.example) | Env vars for range IPs / scoreboard URL |
 | [`HOMELAB.md`](HOMELAB.md) | **VMware homelab** (can mimic `.10`/`.11` or use NAT overrides) |
+| [`scripts/`](scripts/) | Desktop scoreboard shortcut helpers (double-click → browser) |
 | [`homelab/`](homelab/) | **Setup scripts** for Kali / Ubuntu / Windows base config |
 | [`linux/`](linux/) | Phase-1 setup, quest, Phase-2 prep, score agent |
 | [`windows/`](windows/) | Same for Windows Server |

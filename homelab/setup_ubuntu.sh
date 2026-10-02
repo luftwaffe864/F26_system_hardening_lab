@@ -152,12 +152,22 @@ EOF
   log "On Kali: sudo salt-key -A   then   sudo salt '$HOSTNAME_NEW' grains.setval role hardening-linux"
 fi
 
+# Scoreboard Desktop shortcut (points at admin Kali scoreboard)
+SB_URL="http://${KALI_IP}:8080/"
+SCRIPT_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+if [[ -f "$SCRIPT_ROOT/scripts/make_scoreboard_shortcut.sh" ]]; then
+  # Current admin user + placeholder for student once Phase-1 creates them
+  bash "$SCRIPT_ROOT/scripts/make_scoreboard_shortcut.sh" "$SB_URL" "${SUDO_USER:-$(logname 2>/dev/null || echo root)}" || true
+fi
+
 cat <<EOF
 
 [setup-ubuntu] DONE
   Hostname : $HOSTNAME_NEW
   IP       : $IP_ADDR/$PREFIX  (iface: ${IFACE:-skipped})
   Student  : NOT created yet (run linux/setup_phase1.sh for that)
+  Shortcut : Desktop scoreboard launcher -> $SB_URL
+             (Phase-1 also places one on the student Desktop)
 
 Next (after reboot if prompted):
   1) Copy/clone F26_system_hardening_lab onto this box

@@ -178,19 +178,25 @@ if [[ -d "$LAB_DIR/scoreboard" ]]; then
   "
 fi
 
+# Desktop shortcut → open local scoreboard in browser
+SB_URL="http://${IP_ADDR}:8080/"
+if [[ -x "$LAB_DIR/scripts/make_scoreboard_shortcut.sh" ]] || [[ -f "$LAB_DIR/scripts/make_scoreboard_shortcut.sh" ]]; then
+  bash "$LAB_DIR/scripts/make_scoreboard_shortcut.sh" "$SB_URL" "$REAL_USER" || true
+fi
+
 cat <<EOF
 
 [setup-kali] DONE
   Hostname : $HOSTNAME_NEW
   IP       : $IP_ADDR/$PREFIX  (iface: ${IFACE:-skipped})
   Lab dir  : $LAB_DIR
+  Shortcut : Desktop → "DCIG Scoreboard" (double-click opens browser)
 
 Next:
   1) cd $LAB_DIR/scoreboard && source .venv/bin/activate
   2) export HARDENING_SECRET=dcig-hardening-2026 HARDENING_ADMIN=dcig-admin-2026
   3) python server.py
-  4) Browser: http://${IP_ADDR}:8080/
-
-  Or: sudo bash $LAB_DIR/homelab/start_scoreboard.sh
+     Or: bash $LAB_DIR/homelab/start_scoreboard.sh
+  4) Double-click Desktop "DCIG Scoreboard"  (or http://${IP_ADDR}:8080/)
 
 EOF
