@@ -40,14 +40,14 @@ post() {
 if ! id oldintern >/dev/null 2>&1; then post L2-02 10; fi
 # L2-09 remove gamesuser (10)
 if ! id gamesuser >/dev/null 2>&1; then post L2-09 10; fi
-# L2-06 remove chrome-update (10)
-if [[ ! -e /usr/local/bin/chrome-update ]]; then post L2-06 10; fi
-# L2-10 remove FreeVPN (10)
-if [[ ! -e /opt/FreeVPN ]]; then post L2-10 10; fi
-# L2-11 remove passwords.txt (10)
+# L2-06 remove snap-repair (10)
+if [[ ! -e /usr/local/bin/snap-repair ]]; then post L2-06 10; fi
+# L2-10 remove CodecPack (10)
+if [[ ! -e /opt/CodecPack ]]; then post L2-10 10; fi
+# L2-11 remove wifi-notes.txt (10)
 STUDENT_HOME=$(getent passwd student 2>/dev/null | cut -d: -f6)
 STUDENT_HOME=${STUDENT_HOME:-/home/student}
-if [[ ! -e "$STUDENT_HOME/Documents/passwords.txt" ]]; then post L2-11 10; fi
+if [[ ! -e "$STUDENT_HOME/Documents/wifi-notes.txt" ]]; then post L2-11 10; fi
 
 # --- MEDIUM ---
 # L2-01 sysmaint not in sudo / deleted (15)
@@ -64,8 +64,8 @@ fi
 if [[ ! -e /etc/cron.d/system-update-check ]] && [[ ! -e /var/tmp/.update_check.sh ]]; then
   post L2-03 15
 fi
-# L2-05 no listener on 4444 (15)
-if ! ss -tln 2>/dev/null | grep -q ':4444'; then post L2-05 15; fi
+# L2-05 no listener on 5555 (15)
+if ! ss -tln 2>/dev/null | grep -q ':5555'; then post L2-05 15; fi
 # L2-08 ufw active (15)
 if command -v ufw >/dev/null && ufw status 2>/dev/null | head -1 | grep -qi active; then
   post L2-08 15

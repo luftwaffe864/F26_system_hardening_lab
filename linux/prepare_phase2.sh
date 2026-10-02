@@ -42,28 +42,28 @@ if ! id gamesuser >/dev/null 2>&1; then
 fi
 echo "gamesuser:games" | chpasswd
 
-# L2-06 fake tool in PATH
-cat > /usr/local/bin/chrome-update <<'EOF'
+# L2-06 fake tool in PATH (Linux-only name — not mirrored on Windows)
+cat > /usr/local/bin/snap-repair <<'EOF'
 #!/bin/bash
-# Fake updater — remove me (lab)
+# Fake helper — remove me (lab)
 exit 0
 EOF
-chmod 755 /usr/local/bin/chrome-update
+chmod 755 /usr/local/bin/snap-repair
 
-# L2-10 fake bloat software
-install -d -m 755 /opt/FreeVPN
-echo "Fake VPN client — uninstall/delete this folder" > /opt/FreeVPN/README.txt
+# L2-10 fake bloat software under /opt
+install -d -m 755 /opt/CodecPack
+echo "Fake codec pack — uninstall/delete this folder" > /opt/CodecPack/README.txt
 
-# L2-11 plaintext passwords in student home
+# L2-11 plaintext secrets in student home (Linux home/files concept)
 mkdir -p /home/"$STUDENT"/Documents
-cat > /home/"$STUDENT"/Documents/passwords.txt <<'EOF'
+cat > /home/"$STUDENT"/Documents/wifi-notes.txt <<'EOF'
 DO NOT SHARE
 wifi: Winter2024!
 email: Password1
 admin backup: Summer2026!
 EOF
 chown -R "$STUDENT:$STUDENT" /home/"$STUDENT"/Documents
-chmod 644 /home/"$STUDENT"/Documents/passwords.txt
+chmod 644 /home/"$STUDENT"/Documents/wifi-notes.txt
 
 # ========== MEDIUM ==========
 # L2-01 stealth sudo user
@@ -88,20 +88,21 @@ chmod 777 /var/tmp/.update_check.sh
 echo "*/15 * * * * root /var/tmp/.update_check.sh" > /etc/cron.d/system-update-check
 chmod 644 /etc/cron.d/system-update-check
 
-# L2-05 listener 4444
-cat > "$CACHE/listen4444.py" <<'EOF'
+# L2-05 unexpected listener (Linux ss/netstat hunt — not a Windows firewall-rule mirror)
+cat > "$CACHE/listen5555.py" <<'EOF'
 #!/usr/bin/env python3
 import socket, time
 s = socket.socket()
 s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-s.bind(("0.0.0.0", 4444))
+s.bind(("0.0.0.0", 5555))
 s.listen(1)
 while True:
     time.sleep(60)
 EOF
-chmod 755 "$CACHE/listen4444.py"
+chmod 755 "$CACHE/listen5555.py"
+pkill -f 'listen5555.py' 2>/dev/null || true
 pkill -f 'listen4444.py' 2>/dev/null || true
-nohup python3 "$CACHE/listen4444.py" >/dev/null 2>&1 &
+nohup python3 "$CACHE/listen5555.py" >/dev/null 2>&1 &
 
 # L2-08 firewall off
 if command -v ufw >/dev/null 2>&1; then
@@ -244,16 +245,17 @@ Phase 2 is ready on this Linux box (Team $TEAM).
 This is CyberPatriot-style scoring: fix the MACHINE. The score agent checks
 system state about every 20 seconds — you do NOT type answers.
 
-Categories to hunt (easy → hard):
-  - Unused / weak local accounts
-  - Leftover sketchy software and files (PATH, /opt, Documents)
-  - Firewall (ufw) status
+Linux-focused categories (easy → hard):
+  - Unused local accounts
+  - Sketchy PATH /opt artifacts and home-directory secrets
+  - ufw firewall status
   - Extra sudo / sudoers.d privileges
-  - Cron and scheduled persistence
-  - Rogue services and listening ports
-  - SSH hardening (root login, authorized keys)
-  - SUID binaries and world-writable secrets
-  - Boot / rc.local style persistence
+  - cron.d, root crontab, rc.local persistence
+  - Rogue systemd services and unexpected listeners (ss)
+  - SSH hardening (PermitRootLogin, authorized_keys)
+  - SUID binaries and world-writable secret dirs
+
+These are NOT the same plants as the Windows box — hunt Linux artifacts.
 
 Mentors open the room scoreboard when the race starts.
 EOF

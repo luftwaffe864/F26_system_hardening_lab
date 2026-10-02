@@ -52,19 +52,19 @@ $Levels = @(
     @{
         M=1; Title='Run key — startup persistence'
         Task="Tool:  Get-ItemProperty HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run`nSubmit the suspicious value NAME.  answer <name>"
-        Why='Run keys are classic Phase 2 findings (Task Manager > Startup also works).'
+        Why='Run keys are a classic Windows persistence check (Task Manager > Startup also works).'
         Type='answer'; Hints=@('Get-ItemProperty ...\Run','SysHealthUpdate')
     },
     @{
         M=1; Title='Remove-ItemProperty — delete a Run key'
         Task="Tool:  Remove-ItemProperty -Path HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run -Name <Name>`nPractice:`n  Remove-ItemProperty -Path HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run -Name SysHealthUpdate`nAuto-passes when that value is gone."
-        Why='Same pattern for NetHelper-style keys in Phase 2.'
+        Why='Practice removing bad Run values — Phase 2 leans on other Windows controls, but this skill still matters.'
         Type='auto'; Hints=@('Remove-ItemProperty ... -Name SysHealthUpdate')
     },
     @{
         M=1; Title='Firewall — find and remove a bad rule'
         Task="Tools:  Get-NetFirewallRule -DisplayName '*Support*'`n        Remove-NetFirewallRule -DisplayName 'Remote Admin Support'`n   Or:  wf.msc`nRemove/disable 'Remote Admin Support'. Auto-passes when gone or disabled."
-        Why='Phase 2 plants more inbound allows — same cmdlets / wf.msc.'
+        Why='Phase 2 may plant inbound allows — same cmdlets / wf.msc.'
         Type='auto'; Hints=@('Remove-NetFirewallRule -DisplayName "Remote Admin Support"')
     },
     @{

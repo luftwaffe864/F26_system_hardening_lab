@@ -1,7 +1,7 @@
 <#
 ================================================================================
  DCIG System Hardening — Windows Phase 2 prepare
- Auto-run after Windows quest. Plants easy → hard findings for CyberPatriot scoring.
+ Auto-run after Windows quest. Plants Windows-native findings (not a Linux mirror).
 ================================================================================
 #>
 [CmdletBinding()]
@@ -10,10 +10,9 @@ param()
 $ErrorActionPreference = 'Stop'
 $LabRoot = 'C:\HardeningLab'
 $Cfg     = Join-Path $LabRoot 'config'
-$Rogue2  = 'C:\ProgramData\NetHelper'
 $RunKey  = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run'
-$RunOnce = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\RunOnce'
-$StartupAll = 'C:\ProgramData\Microsoft\Windows\Start Menu\Programs\StartUp'
+$ShareRoot = 'C:\Shares'
+$UnquotedDir = 'C:\Program Files\Vendor Update'
 
 function Say($m) { Write-Host "[phase2-win] $m" -ForegroundColor Green }
 
@@ -37,7 +36,7 @@ $ScoreboardUrl = if (Test-Path (Join-Path $Cfg 'scoreboard_url.txt')) {
     (Get-Content (Join-Path $Cfg 'scoreboard_url.txt') -Raw).Trim()
 } else { 'http://127.0.0.1:8080' }
 
-Say "preparing Phase 2 findings (easy→hard) for Team $Team"
+Say "preparing Phase 2 findings (Windows-native, easy→hard) for Team $Team"
 
 Remove-Item (Join-Path $env:LOCALAPPDATA 'HardeningQuest') -Recurse -Force -EA SilentlyContinue
 
@@ -50,113 +49,127 @@ Remove-Item 'C:\Program Files\PCOptimizer Pro' -Recurse -Force -EA SilentlyConti
 try { Set-MpPreference -DisableRealtimeMonitoring $false -EA SilentlyContinue } catch {}
 
 # ========== EASY ==========
-# W2-02 unused account
-if (-not (Get-LocalUser -Name 'oldintern' -EA SilentlyContinue)) {
-    New-LocalUser -Name 'oldintern' -Password (ConvertTo-SecureString 'password' -AsPlainText -Force) `
-        -FullName 'Former intern' -PasswordNeverExpires | Out-Null
-}
-
-# W2-09 enable Guest
+# W2-02 Guest enabled (Windows built-in weak account)
 try {
     $g = Get-LocalUser -Name 'Guest' -EA SilentlyContinue
     if ($g) { Enable-LocalUser -Name 'Guest' -EA SilentlyContinue }
 } catch {}
 
-# W2-07 fake software
-New-Item -ItemType Directory -Force -Path 'C:\Program Files\ChromeUpdater' | Out-Null
-Set-Content 'C:\Program Files\ChromeUpdater\chrome-update.bat' -Value '@echo off' -Encoding ASCII
+# W2-09 leftover vendor account (different name/story than Linux)
+$vendPass = ConvertTo-SecureString 'TempVendor1!' -AsPlainText -Force
+if (-not (Get-LocalUser -Name 'tempvendor' -EA SilentlyContinue)) {
+    New-LocalUser -Name 'tempvendor' -Password $vendPass `
+        -FullName 'Temp Vendor Access' -Description 'Remove after install' -PasswordNeverExpires | Out-Null
+} else {
+    Set-LocalUser -Name 'tempvendor' -Password $vendPass -PasswordNeverExpires $true
+}
 
-# W2-10 more bloat
-New-Item -ItemType Directory -Force -Path 'C:\Program Files\FreeGameLauncher' | Out-Null
-Set-Content 'C:\Program Files\FreeGameLauncher\readme.txt' -Value 'Fake game launcher — delete this folder' -Encoding ASCII
+# W2-07 Sticky Keys IFEO debugger backdoor
+$ifeo = 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options\sethc.exe'
+New-Item -Path $ifeo -Force | Out-Null
+New-ItemProperty -Path $ifeo -Name 'Debugger' -Value 'C:\Windows\System32\cmd.exe' -PropertyType String -Force | Out-Null
 
-# W2-11 plaintext passwords on student desktop
-$desk = 'C:\Users\student\Desktop'
-New-Item -ItemType Directory -Force -Path $desk | Out-Null
-Set-Content (Join-Path $desk 'passwords.txt') -Value "wifi=Winter2024!`r`nadmin=Password1`r`n" -Encoding ASCII
-icacls (Join-Path $desk 'passwords.txt') /grant 'Users:F' | Out-Null
+# W2-10 open SMB share with Everyone Full Control
+New-Item -ItemType Directory -Force -Path $ShareRoot | Out-Null
+New-Item -ItemType Directory -Force -Path (Join-Path $ShareRoot 'TeamDrop') | Out-Null
+Set-Content (Join-Path $ShareRoot 'TeamDrop\readme.txt') -Value 'Lab drop share — lock this down' -Encoding ASCII
+try { Remove-SmbShare -Name 'TeamDrop' -Force -EA SilentlyContinue } catch {}
+New-SmbShare -Name 'TeamDrop' -Path (Join-Path $ShareRoot 'TeamDrop') -FullAccess 'Everyone' -EA SilentlyContinue | Out-Null
+
+# W2-11 UAC disabled
+New-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System' `
+    -Name 'EnableLUA' -Value 0 -PropertyType DWord -Force | Out-Null
 
 # ========== MEDIUM ==========
-# W2-01 stealth admin
-$pass = ConvertTo-SecureString 'Summer2026!' -AsPlainText -Force
-if (-not (Get-LocalUser -Name 'sysmaint' -EA SilentlyContinue)) {
-    New-LocalUser -Name 'sysmaint' -Password $pass -FullName 'System Maintenance' -PasswordNeverExpires | Out-Null
+# W2-01 excess admin (contractor — not the Linux sysmaint/helpdesk names)
+$cPass = ConvertTo-SecureString 'Contract2026!' -AsPlainText -Force
+if (-not (Get-LocalUser -Name 'contractor' -EA SilentlyContinue)) {
+    New-LocalUser -Name 'contractor' -Password $cPass -FullName 'Outside Contractor' -PasswordNeverExpires | Out-Null
 } else {
-    Set-LocalUser -Name 'sysmaint' -Password $pass
+    Set-LocalUser -Name 'contractor' -Password $cPass
 }
-Add-LocalGroupMember -Group 'Administrators' -Member 'sysmaint' -EA SilentlyContinue
+Add-LocalGroupMember -Group 'Administrators' -Member 'contractor' -EA SilentlyContinue
 
-# W2-03 scheduled task
-$taskScript = 'C:\ProgramData\update_check.ps1'
-Set-Content -Path $taskScript -Value 'Start-Sleep -Seconds 1' -Encoding ASCII
-schtasks /Create /TN 'SystemUpdateCheck' /SC MINUTE /MO 15 /RU SYSTEM `
-    /TR "powershell.exe -WindowStyle Hidden -File $taskScript" /F | Out-Null
+# W2-03 RDP without Network Level Authentication
+$rdp = 'HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp'
+if (Test-Path $rdp) {
+    New-ItemProperty -Path $rdp -Name 'UserAuthentication' -Value 0 -PropertyType DWord -Force | Out-Null
+}
+Set-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server' -Name 'fDenyTSConnections' -Value 0 -EA SilentlyContinue
 
-# W2-05 firewall hole
-New-NetFirewallRule -DisplayName 'Legacy Backup Port' -Direction Inbound `
-    -Action Allow -Protocol TCP -LocalPort 4444 -Profile Any -EA SilentlyContinue | Out-Null
+# W2-05 odd inbound firewall allow (not the Linux listener ports)
+Remove-NetFirewallRule -DisplayName 'Temp SNMP Access' -EA SilentlyContinue
+New-NetFirewallRule -DisplayName 'Temp SNMP Access' -Direction Inbound `
+    -Action Allow -Protocol UDP -LocalPort 161 -Profile Any -EA SilentlyContinue | Out-Null
 
-# W2-06 Defender off
+# W2-06 Defender real-time off (Windows-specific core)
 try { Set-MpPreference -DisableRealtimeMonitoring $true -EA SilentlyContinue } catch {}
 
-# W2-08 weak ACL secrets
-New-Item -ItemType Directory -Force -Path 'C:\CaseFiles' | Out-Null
-Set-Content 'C:\CaseFiles\backup_creds.txt' -Value 'backup_password=Summer2026!' -Encoding ASCII
-icacls 'C:\CaseFiles\backup_creds.txt' /grant Everyone:F | Out-Null
+# W2-08 AlwaysInstallElevated (both hives)
+$instPol = 'SOFTWARE\Policies\Microsoft\Windows\Installer'
+foreach ($root in @('HKLM:', 'HKCU:')) {
+    $p = Join-Path $root $instPol
+    New-Item -Path $p -Force | Out-Null
+    New-ItemProperty -Path $p -Name 'AlwaysInstallElevated' -Value 1 -PropertyType DWord -Force | Out-Null
+}
 
-# W2-12 AutoAdminLogon with password in registry
+# W2-12 AutoAdminLogon with password in Winlogon (Windows-specific core)
 $wl = 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon'
 New-ItemProperty -Path $wl -Name 'AutoAdminLogon' -Value '1' -PropertyType String -Force | Out-Null
-New-ItemProperty -Path $wl -Name 'DefaultUserName' -Value 'sysmaint' -PropertyType String -Force | Out-Null
-New-ItemProperty -Path $wl -Name 'DefaultPassword' -Value 'Summer2026!' -PropertyType String -Force | Out-Null
+New-ItemProperty -Path $wl -Name 'DefaultUserName' -Value 'contractor' -PropertyType String -Force | Out-Null
+New-ItemProperty -Path $wl -Name 'DefaultPassword' -Value 'Contract2026!' -PropertyType String -Force | Out-Null
 
-# W2-13 second firewall allow (high port)
-New-NetFirewallRule -DisplayName 'Vendor Support Tunnel' -Direction Inbound `
-    -Action Allow -Protocol TCP -LocalPort 1337 -Profile Any -EA SilentlyContinue | Out-Null
+# W2-13 WDigest cleartext credential caching
+$wd = 'HKLM:\SYSTEM\CurrentControlSet\Control\SecurityProviders\WDigest'
+New-Item -Path $wd -Force | Out-Null
+New-ItemProperty -Path $wd -Name 'UseLogonCredential' -Value 1 -PropertyType DWord -Force | Out-Null
 
-# W2-14 helpdesk in Administrators (second bad admin)
-$hdPass = ConvertTo-SecureString 'Helpdesk1' -AsPlainText -Force
-if (-not (Get-LocalUser -Name 'helpdesk' -EA SilentlyContinue)) {
-    New-LocalUser -Name 'helpdesk' -Password $hdPass -FullName 'Help Desk Temp' -PasswordNeverExpires | Out-Null
-}
-Add-LocalGroupMember -Group 'Administrators' -Member 'helpdesk' -EA SilentlyContinue
+# W2-14 Remote Registry auto-start
+Set-Service -Name 'RemoteRegistry' -StartupType Automatic -EA SilentlyContinue
+Start-Service -Name 'RemoteRegistry' -EA SilentlyContinue
 
 # ========== HARD ==========
-# W2-04 Run key + process
-New-Item -ItemType Directory -Force -Path $Rogue2 | Out-Null
-$burn = Join-Path $Rogue2 'loop.ps1'
-Set-Content $burn -Value 'while ($true) { Start-Sleep -Seconds 45 }' -Encoding ASCII
-Copy-Item "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" (Join-Path $Rogue2 'net_helper.exe') -Force
-$cmd = '"' + (Join-Path $Rogue2 'net_helper.exe') + '" -WindowStyle Hidden -ExecutionPolicy Bypass -File "' + $burn + '"'
-New-ItemProperty -Path $RunKey -Name 'NetHelper' -Value $cmd -PropertyType String -Force | Out-Null
-Start-Process -FilePath (Join-Path $Rogue2 'net_helper.exe') -ArgumentList '-WindowStyle','Hidden','-ExecutionPolicy','Bypass','-File',$burn -WindowStyle Hidden -EA SilentlyContinue
+# W2-04 anonymous / SAM enumeration too open
+New-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Lsa' `
+    -Name 'RestrictAnonymous' -Value 0 -PropertyType DWord -Force | Out-Null
 
-# W2-15 All-Users Startup folder persistence
-New-Item -ItemType Directory -Force -Path $StartupAll | Out-Null
-Set-Content (Join-Path $StartupAll 'SecurityUpdate.bat') -Value '@echo off`r`nrem lab persistence — delete this file' -Encoding ASCII
+# W2-15 weak LAN Manager authentication level
+New-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Lsa' `
+    -Name 'LmCompatibilityLevel' -Value 1 -PropertyType DWord -Force | Out-Null
 
-# W2-16 RunOnce persistence
-New-ItemProperty -Path $RunOnce -Name 'FlushCache' -Value 'cmd.exe /c echo lab' -PropertyType String -Force | Out-Null
+# W2-16 WinRM allow unencrypted traffic
+try {
+    Set-Item -Path WSMan:\localhost\Service\AllowUnencrypted -Value $true -Force -EA SilentlyContinue
+} catch {
+    # Fallback if WinRM provider path differs
+    winrm set winrm/config/service '@{AllowUnencrypted="true"}' 2>$null | Out-Null
+}
 
-# W2-17 stealth scheduled task (different name)
-$stealth = 'C:\ProgramData\svc_health.ps1'
-Set-Content -Path $stealth -Value '# lab' -Encoding ASCII
-schtasks /Create /TN 'WindowsHealthMonitor' /SC HOURLY /RU SYSTEM `
-    /TR "powershell.exe -WindowStyle Hidden -File $stealth" /F | Out-Null
+# W2-17 unquoted service path under Program Files
+New-Item -ItemType Directory -Force -Path $UnquotedDir | Out-Null
+$payload = Join-Path $UnquotedDir 'update.exe'
+Copy-Item "$env:SystemRoot\System32\cmd.exe" $payload -Force
+# Intentionally UNQUOTED ImagePath (space in Program Files\Vendor Update)
+cmd /c "sc.exe stop VendorUpd >nul 2>&1"
+cmd /c "sc.exe delete VendorUpd >nul 2>&1"
+cmd /c 'sc.exe create VendorUpd binPath= C:\Program Files\Vendor Update\update.exe start= demand DisplayName= VendorUpdateHelper >nul 2>&1'
 
-# W2-18 simple rogue service (if we can create one)
-$svcDir = 'C:\ProgramData\WinUpdSvc'
+# W2-18 unauthorized auto-start service (Windows service abuse — not Linux systemd mirror name)
+$svcDir = 'C:\ProgramData\PrintNotifyHelper'
 New-Item -ItemType Directory -Force -Path $svcDir | Out-Null
 $svcPs1 = Join-Path $svcDir 'run.ps1'
 Set-Content $svcPs1 -Value 'while ($true) { Start-Sleep 60 }' -Encoding ASCII
-# Use sc to create a service that runs powershell - may show as startable finding; students stop/delete
 $bin = "C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$svcPs1`""
-cmd /c "sc.exe create HLWinUpd binPath= `"$bin`" start= auto DisplayName= `"Windows Update Compatibility`" >nul 2>&1"
-cmd /c "sc.exe start HLWinUpd >nul 2>&1"
+cmd /c "sc.exe stop HLPrintHelp >nul 2>&1"
+cmd /c "sc.exe delete HLPrintHelp >nul 2>&1"
+cmd /c "sc.exe create HLPrintHelp binPath= `"$bin`" start= auto DisplayName= `"Print Notify Compatibility`" >nul 2>&1"
+cmd /c "sc.exe start HLPrintHelp >nul 2>&1"
 
-# W2-19 world-readable secrets under ProgramData
-Set-Content 'C:\ProgramData\app_secrets.ini' -Value "api_key=not-a-real-key`r`n" -Encoding ASCII
-icacls 'C:\ProgramData\app_secrets.ini' /grant Everyone:F | Out-Null
+# W2-19 sensitive file on open share ACL (Everyone Full Control)
+New-Item -ItemType Directory -Force -Path (Join-Path $ShareRoot 'HR') | Out-Null
+$pay = Join-Path $ShareRoot 'HR\payroll.csv'
+Set-Content $pay -Value "name,salary`r`nalice,90000`r`n" -Encoding ASCII
+icacls $pay /grant Everyone:F | Out-Null
 
 Set-Content (Join-Path $Cfg 'phase.txt') 'phase2'
 New-Item -ItemType File -Path (Join-Path $Cfg 'phase2_auto_done.flag') -Force | Out-Null
@@ -187,17 +200,21 @@ Phase 2 is ready on this Windows box (Team $Team).
 CyberPatriot-style scoring: fix the MACHINE. The score agent checks system
 state about once a minute — you do NOT type answers into a prompt.
 
-Categories (easy → hard):
-  - Unused / Guest accounts
-  - Sketchy Program Files folders and Desktop password files
+Windows-focused categories (easy → hard):
+  - Built-in / leftover local accounts
+  - Accessibility / Image File Execution Options abuse
+  - Overly open SMB shares and file ACLs
+  - UAC and AlwaysInstallElevated policy
   - Windows Defender real-time protection
-  - Extra Administrators
-  - Bad inbound firewall rules
-  - Startup Run keys, Startup folder, RunOnce
-  - Scheduled tasks
-  - AutoAdminLogon / passwords in Winlogon
-  - Unexpected services
-  - Sensitive files with Everyone Full Control
+  - RDP Network Level Authentication
+  - AutoAdminLogon / secrets in Winlogon
+  - WDigest credential caching
+  - Remote Registry service
+  - LSA anonymous / LM compatibility settings
+  - WinRM encryption settings
+  - Unquoted service paths and unexpected services
+
+These are NOT the same plants as the Linux box — hunt Windows artifacts.
 
 Mentors open the room scoreboard when the race starts.
 "@ | Set-Content (Join-Path $LabRoot 'PHASE2.txt') -Encoding ASCII
