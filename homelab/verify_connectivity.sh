@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # Quick connectivity / hostname check from any Linux box (Kali or Ubuntu).
 #   bash verify_connectivity.sh
-#   bash verify_connectivity.sh --kali 192.168.56.10 --ubuntu 192.168.56.11 --win 192.168.56.12
+#   bash verify_connectivity.sh --kali 192.168.64.10 --ubuntu 192.168.64.11 --win 192.168.64.12
 set -euo pipefail
 
-KALI="${KALI:-192.168.56.10}"
-UBUNTU="${UBUNTU:-192.168.56.11}"
-WIN="${WIN:-192.168.56.12}"
+KALI="${KALI:-192.168.1.7}"
+UBUNTU="${UBUNTU:-192.168.1.10}"
+WIN="${WIN:-192.168.1.11}"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in

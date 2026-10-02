@@ -2,21 +2,23 @@
 
 Guided quests on **Linux then Windows**, then a CyberPatriot-style **Phase 2** find-and-fix with a live **team** scoreboard.
 
-Each student gets a paired box set:
+Each student gets a paired box set on an **isolated `192.168.1.0/24`** (range ops pre-configure subnet and IPs):
 
-| OS | Hostname pattern |
-|----|------------------|
-| Linux | `ubuntu01` … `ubuntu30` |
-| Windows | `win19_srv01` … `win19_srv30` |
+| OS | Hostname pattern | IP (in each pod) |
+|----|------------------|------------------|
+| Linux | `ubuntu01` … `ubuntu30` | **`192.168.1.10`** |
+| Windows | `win19_srv01` … `win19_srv30` | **`192.168.1.11`** |
 
 **Team NN** = trailing digits (e.g. `ubuntu07` + `win19_srv07` → Team 07).
+
+**Mentors:** shared **admin Kali** (Salt + scoreboard). Push lab with Salt — **do not** re-IP student VMs. Students: Guacamole SSH/RDP only. See **[RANGE.md](RANGE.md)**.
 
 ## Student flow
 
 1. Start on **Linux** → run `hardening-quest`
-2. Linux quest end → go to matching **Windows** box; Linux **Phase 2 prep** starts in the background
+2. Linux quest end → **Phase 2 prep auto-starts on Linux**; go to matching **Windows** box
 3. On Windows → run `hardening-quest`
-4. Windows quest end → “please wait…” while **Windows Phase 2 prep** runs
+4. Windows quest end → **Phase 2 prep auto-starts** (“please wait…”) — student does not run prep scripts
 5. Mentors **open Phase 2** on the scoreboard → students harden both boxes; agents post points under Team NN
 
 ```text
@@ -49,7 +51,7 @@ python server.py
 ```bash
 # Linux box (as root) — fix CRLF if copied from Windows:
 #   sed -i 's/\r$//' linux/*.sh
-export SCOREBOARD_URL=http://<scoreboard-ip>:8080
+export SCOREBOARD_URL=http://192.168.1.7:8080
 export HARDENING_SECRET=dcig-hardening-2026
 sudo bash linux/setup_phase1.sh --no-switch
 sudo -u student -i hardening-quest
@@ -57,7 +59,7 @@ sudo -u student -i hardening-quest
 
 ```powershell
 # Windows box (elevated)
-.\windows\setup_phase1.ps1 -ScoreboardUrl 'http://<scoreboard-ip>:8080' -Secret 'dcig-hardening-2026'
+.\windows\setup_phase1.ps1 -ScoreboardUrl 'http://192.168.1.7:8080' -Secret 'dcig-hardening-2026'
 # Then login as student / Hardening2026!
 powershell -ExecutionPolicy Bypass -File C:\HardeningLab\hardening_quest.ps1
 ```
@@ -70,27 +72,24 @@ curl -X POST http://<scoreboard-ip>:8080/api/admin/open \
   -d '{"admin":"dcig-admin-2026"}'
 ```
 
-## Salt (range · ~30 pairs)
+## Salt (cyber range · ~30 pairs)
 
-Files expected on the master at `/srv/salt/F26_system_hardening_lab` (symlink this repo).
+Networking is already on the images. Mentors only deploy lab content:
 
-1. Copy [`salt/hardening-lab.sls`](salt/hardening-lab.sls) into the master’s state tree as `hardening-lab.sls` (or include from there).
-2. Pillar: see [`salt/pillar.example`](salt/pillar.example) — set `scoreboard_url` + `secret`.
-3. Grains per minion: `role:hardening-linux` or `role:hardening-windows`.
-4. Apply:
+1. Repo on master: `/srv/salt/F26_system_hardening_lab`
+2. Pillar: [`salt/pillar.example`](salt/pillar.example) — `scoreboard_url`, `secret`, `student_password`
+3. Grains: `role:hardening-linux` / `role:hardening-windows`
+4. `salt -G 'role:hardening-linux' state.apply hardening-lab` (and Windows)
 
-```bash
-salt -G 'role:hardening-linux' state.apply hardening-lab
-salt -G 'role:hardening-windows' state.apply hardening-lab
-```
-
-Same commands work for a single homelab pair.
+Details: **[RANGE.md](RANGE.md)**. Homelab VMware setup (where you *do* set IPs): **[HOMELAB.md](HOMELAB.md)**.
 
 ## Layout
 
 | Path | Role |
 |------|------|
-| [`HOMELAB.md`](HOMELAB.md) | **Detailed VMware homelab setup** (IPs, hostnames, users, Salt) |
+| [`RANGE.md`](RANGE.md) | **Cyber range** pod layout (`192.168.1.0/24`, Salt, scoreboard) |
+| [`config/range.env.example`](config/range.env.example) | Env vars for range IPs / scoreboard URL |
+| [`HOMELAB.md`](HOMELAB.md) | **VMware homelab** (can mimic `.10`/`.11` or use NAT overrides) |
 | [`homelab/`](homelab/) | **Setup scripts** for Kali / Ubuntu / Windows base config |
 | [`linux/`](linux/) | Phase-1 setup, quest, Phase-2 prep, score agent |
 | [`windows/`](windows/) | Same for Windows Server |

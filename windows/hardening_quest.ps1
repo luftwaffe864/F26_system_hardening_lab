@@ -185,30 +185,69 @@ function Finish-Quest {
     Write-Host ("  Windows quest complete. Score: {0}" -f $script:Score) -ForegroundColor Green
     Write-Host ''
     Write-Host '  Please wait while we prepare your system for the next lab...' -ForegroundColor Yellow
-    Write-Host '  (Phase 2 prep is running — this can take a minute.)' -ForegroundColor DarkGray
+    Write-Host '  (Phase 2 prep starts automatically — do not run any extra scripts.)' -ForegroundColor DarkGray
     Write-Host ''
+
     $prep = Join-Path $LabRoot 'prepare_phase2.ps1'
     if (-not (Test-Path $prep)) {
         $prep = Join-Path (Split-Path -Parent $MyInvocation.MyCommand.Path) 'prepare_phase2.ps1'
     }
-    if (Test-Path $prep) {
+    $flag = Join-Path $Cfg 'start_phase2.flag'
+    $done = Join-Path $Cfg 'phase2_auto_done.flag'
+    $phaseFile = Join-Path $Cfg 'phase.txt'
+    $phase2Txt = Join-Path $LabRoot 'PHASE2.txt'
+
+    # Signal the SYSTEM watcher (works without UAC). Also try on-demand task.
+    New-Item -ItemType Directory -Force -Path $Cfg | Out-Null
+    'go' | Set-Content -Path $flag -Encoding ASCII
+    Set-Content -Path $phaseFile -Value 'phase1-done' -Encoding ASCII
+
+    $kicked = $false
+    try {
+        $null = schtasks /Run /TN 'HardeningPreparePhase2' 2>&1
+        if ($LASTEXITCODE -eq 0) { $kicked = $true }
+    } catch { }
+
+    if (-not $kicked -and (Test-Path $prep)) {
+        # Last resort: try elevated RunAs (may prompt UAC in console sessions)
         try {
             Start-Process -FilePath 'powershell.exe' -Verb RunAs -Wait -ArgumentList @(
                 '-NoProfile','-ExecutionPolicy','Bypass','-File', $prep
             ) -EA Stop
+            $kicked = $true
         } catch {
-            # If UAC / RunAs fails (already admin), run inline
-            & $prep
+            try {
+                & $prep
+                $kicked = $true
+            } catch {
+                Write-Host '  Waiting for SYSTEM watcher to pick up Phase 2 prep...' -ForegroundColor DarkGray
+            }
         }
-    } else {
-        Write-Host '  [!] prepare_phase2.ps1 not found — ask a mentor.' -ForegroundColor Red
+    }
+
+    # Wait up to ~2 minutes for prep to finish (PHASE2.txt or phase=phase2)
+    $ready = $false
+    for ($i = 0; $i -lt 24; $i++) {
+        Start-Sleep -Seconds 5
+        $ph = ''
+        if (Test-Path $phaseFile) { $ph = (Get-Content $phaseFile -Raw).Trim() }
+        if ((Test-Path $phase2Txt) -or (Test-Path $done) -or $ph -eq 'phase2') {
+            $ready = $true
+            break
+        }
+        Write-Host -NoNewline '.'
     }
     Write-Host ''
-    Write-Host '  Phase 2 should now be ready on this Windows box.' -ForegroundColor Green
+
+    if ($ready) {
+        Write-Host '  Phase 2 is ready on this Windows box.' -ForegroundColor Green
+    } else {
+        Write-Host '  Phase 2 prep is still running (or needs a mentor). Check C:\HardeningLab\phase2-prep.log' -ForegroundColor Yellow
+        Write-Host '  You can keep waiting, or ask a mentor to run prepare_phase2.ps1 elevated.' -ForegroundColor DarkGray
+    }
     Write-Host ("  When mentors open scoring, fix findings for Team {0} — Linux + Windows both count." -f $team) -ForegroundColor Cyan
-    Write-Host '  Read C:\HardeningLab\PHASE2.txt for a high-level checklist.' -ForegroundColor DarkGray
+    Write-Host '  Read C:\HardeningLab\PHASE2.txt for a high-level checklist once it appears.' -ForegroundColor DarkGray
     Write-Host ''
-    Set-Content (Join-Path $Cfg 'phase.txt') 'phase1-done'
 }
 
 Show-Banner

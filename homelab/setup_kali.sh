@@ -1,25 +1,26 @@
 #!/usr/bin/env bash
 # =============================================================================
-#  Homelab — Kali mentor box base setup
-#  Run on Kali AFTER a fresh install (your sudo user):
+#  Homelab ONLY — not for cyber range student/target VMs.
+#  Kali mentor box base setup. Run AFTER a fresh install (your sudo user):
 #
 #    sudo bash setup_kali.sh
-#    sudo bash setup_kali.sh --ip 192.168.56.10 --iface eth0
-#    sudo bash setup_kali.sh --ip 192.168.56.10 --iface eth0 --salt-master
+#    sudo bash setup_kali.sh --ip 192.168.1.7 --iface eth0
+#    sudo bash setup_kali.sh --ip 192.168.1.7 --iface eth0 --salt-master
 #    sudo bash setup_kali.sh --skip-net   # hostname/packages only
 #
-#  Defaults match HOMELAB.md (Host-Only 192.168.56.0/24).
+#  Defaults match RANGE.md (admin Kali / Salt + scoreboard at 192.168.1.7).
+#  Homelab on VMware NAT: pass --ip/--gateway if your subnet is not 192.168.1.0/24.
 # =============================================================================
 set -euo pipefail
 
 HOSTNAME_NEW="${HOSTNAME_NEW:-kali-mentor}"
-IP_ADDR="${IP_ADDR:-192.168.56.10}"
+IP_ADDR="${IP_ADDR:-192.168.1.7}"
 PREFIX="${PREFIX:-24}"
-GATEWAY="${GATEWAY:-192.168.56.1}"
+GATEWAY="${GATEWAY:-192.168.1.1}"
 DNS="${DNS:-1.1.1.1,8.8.8.8}"
 IFACE="${IFACE:-}"
-UBUNTU_IP="${UBUNTU_IP:-192.168.56.11}"
-WIN_IP="${WIN_IP:-192.168.56.12}"
+UBUNTU_IP="${UBUNTU_IP:-192.168.1.10}"
+WIN_IP="${WIN_IP:-192.168.1.11}"
 LAB_DIR="${LAB_DIR:-}"
 SKIP_NET=0
 INSTALL_SALT=0

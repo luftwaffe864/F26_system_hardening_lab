@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # =============================================================================
-#  Homelab — Ubuntu hardening target base setup
-#  Run on Ubuntu Server AFTER a fresh install (your sudo admin user):
+#  Homelab ONLY — cyber range Ubuntu boxes already have 192.168.1.10.
+#  Ubuntu hardening target base setup. Run AFTER a fresh install (sudo admin):
 #
 #    sudo bash setup_ubuntu.sh
-#    sudo bash setup_ubuntu.sh --ip 192.168.56.11 --iface ens33
-#    sudo bash setup_ubuntu.sh --hostname ubuntu01 --ip 192.168.56.11
-#    sudo bash setup_ubuntu.sh --salt-minion --master 192.168.56.10
+#    sudo bash setup_ubuntu.sh --ip 192.168.1.10 --iface ens33
+#    sudo bash setup_ubuntu.sh --hostname ubuntu01 --ip 192.168.1.10
+#    sudo bash setup_ubuntu.sh --salt-minion --master 192.168.1.7
 #    sudo bash setup_ubuntu.sh --skip-net
 #
 #  Does NOT create the lab "student" account — Phase-1 setup_phase1.sh does that.
@@ -15,17 +15,17 @@
 set -euo pipefail
 
 HOSTNAME_NEW="${HOSTNAME_NEW:-ubuntu01}"
-IP_ADDR="${IP_ADDR:-192.168.56.11}"
+IP_ADDR="${IP_ADDR:-192.168.1.10}"
 PREFIX="${PREFIX:-24}"
-GATEWAY="${GATEWAY:-192.168.56.1}"
+GATEWAY="${GATEWAY:-192.168.1.1}"
 DNS1="${DNS1:-1.1.1.1}"
 DNS2="${DNS2:-8.8.8.8}"
 IFACE="${IFACE:-}"
-KALI_IP="${KALI_IP:-192.168.56.10}"
-WIN_IP="${WIN_IP:-192.168.56.12}"
+KALI_IP="${KALI_IP:-192.168.1.7}"
+WIN_IP="${WIN_IP:-192.168.1.11}"
 SKIP_NET=0
 INSTALL_SALT=0
-MASTER_IP="${MASTER_IP:-192.168.56.10}"
+MASTER_IP="${MASTER_IP:-192.168.1.7}"
 NEED_REBOOT=0
 
 while [[ $# -gt 0 ]]; do

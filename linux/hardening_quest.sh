@@ -215,14 +215,28 @@ finish() {
   say "  ${BOLD}NEXT:${N} Log into your Windows box ${C}${winhost}${N} and run:"
   say "    ${C}hardening-quest${N}"
   say ""
-  say "  While you switch, this Linux box will prepare Phase 2 in the background."
+  say "  Phase 2 prep starts automatically on this Linux box — you do not run anything else here."
   line
-  # Kick Phase-2 prep (idempotent)
-  if [[ -x /usr/local/sbin/hardening-prepare-phase2 ]]; then
-    as_root nohup /usr/local/sbin/hardening-prepare-phase2 >/var/log/hardening-phase2-prep.log 2>&1 &
-    ok "Phase 2 prep started on Linux (log: /var/log/hardening-phase2-prep.log)"
+
+  # Auto-start Phase-2 prep (no student action). Prefer systemd oneshot; fall back to nohup.
+  local started=0
+  if systemctl list-unit-files hardening-prepare-phase2.service >/dev/null 2>&1; then
+    if as_root systemctl start hardening-prepare-phase2.service; then
+      started=1
+      ok "Phase 2 prep started (systemctl hardening-prepare-phase2)"
+    fi
+  fi
+  if [[ "$started" -eq 0 && -x /usr/local/sbin/hardening-prepare-phase2 ]]; then
+    # Redirects must run as root (student cannot write /var/log)
+    if as_root bash -c 'nohup /usr/local/sbin/hardening-prepare-phase2 >>/var/log/hardening-phase2-prep.log 2>&1 &'; then
+      started=1
+      ok "Phase 2 prep started in background"
+    fi
+  fi
+  if [[ "$started" -eq 0 ]]; then
+    warn "Could not auto-start Phase 2 prep — ask a mentor (sudo systemctl start hardening-prepare-phase2)."
   else
-    warn "prepare_phase2.sh not installed; mentor should run it."
+    say "  ${DIM}Log: /var/log/hardening-phase2-prep.log${N}"
   fi
   printf 'phase1-done\n' | as_root tee "$CFG/phase" >/dev/null 2>&1 || true
 }

@@ -23,7 +23,7 @@ LIB=/usr/local/lib/hardening-lab
 CACHE=/usr/local/lib/.hl-cache
 SELF="$(readlink -f "$0")"
 ROOT="$(dirname "$SELF")"
-SCOREBOARD_URL="${SCOREBOARD_URL:-http://127.0.0.1:8080}"
+SCOREBOARD_URL="${SCOREBOARD_URL:-http://192.168.1.7:8080}"
 HARDENING_SECRET="${HARDENING_SECRET:-dcig-hardening-2026}"
 
 log() { echo "[hardening-linux] $*"; }
@@ -63,7 +63,27 @@ install_game() {
   install -m 755 "$SELF" "$LIB/setup_phase1.sh"
   # convenience symlink for prepare
   ln -sfn "$LIB/prepare_phase2.sh" /usr/local/sbin/hardening-prepare-phase2
-  log "installed hardening-quest"
+
+  # Oneshto service: quest finish runs "sudo systemctl start hardening-prepare-phase2"
+  # so students never invoke prepare_phase2.sh themselves.
+  cat > /etc/systemd/system/hardening-prepare-phase2.service <<EOF
+[Unit]
+Description=DCIG Hardening Lab — Phase 2 prepare (auto after Linux quest)
+After=network.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/hardening-prepare-phase2
+StandardOutput=append:/var/log/hardening-phase2-prep.log
+StandardError=append:/var/log/hardening-phase2-prep.log
+
+[Install]
+WantedBy=multi-user.target
+EOF
+  systemctl daemon-reload
+  touch /var/log/hardening-phase2-prep.log
+  chmod 644 /var/log/hardening-phase2-prep.log
+  log "installed hardening-quest + auto Phase-2 service"
 }
 
 plant_users() {

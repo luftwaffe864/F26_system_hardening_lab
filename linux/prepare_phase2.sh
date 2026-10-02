@@ -110,6 +110,8 @@ fi
 echo "oldintern:password" | chpasswd
 
 printf 'phase2\n' > "$CFG/phase"
+touch "$CFG/phase2_auto_done" 2>/dev/null || true
+
 
 # Install / enable score agent timer
 cat > /etc/systemd/system/hardening-score-agent.service <<EOF

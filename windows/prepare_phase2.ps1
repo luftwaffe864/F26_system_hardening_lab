@@ -95,6 +95,9 @@ Set-Content 'C:\CaseFiles\backup_creds.txt' -Value 'backup_password=Summer2026!'
 icacls 'C:\CaseFiles\backup_creds.txt' /grant Everyone:F | Out-Null
 
 Set-Content (Join-Path $Cfg 'phase.txt') 'phase2'
+New-Item -ItemType File -Path (Join-Path $Cfg 'phase2_auto_done.flag') -Force | Out-Null
+Remove-Item (Join-Path $Cfg 'start_phase2.flag') -Force -EA SilentlyContinue
+
 
 # Score agent scheduled task (every 20 sec via a wrapper that loops is heavy —
 # use a 1-min task that runs the agent once)

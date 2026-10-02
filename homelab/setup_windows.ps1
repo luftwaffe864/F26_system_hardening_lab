@@ -1,14 +1,14 @@
 <#
 ================================================================================
- Homelab — Windows Server 2019 target base setup
- Run in elevated PowerShell AFTER a fresh install:
+ Homelab ONLY — cyber range Windows boxes already have 192.168.1.11.
+ Windows Server 2019 target base setup. Run elevated AFTER a fresh install:
 
    Set-ExecutionPolicy Bypass -Scope Process -Force
    .\setup_windows.ps1
-   .\setup_windows.ps1 -IPAddress 192.168.56.12 -InterfaceAlias Ethernet0
+   .\setup_windows.ps1 -IPAddress 192.168.1.11 -InterfaceAlias Ethernet0
    .\setup_windows.ps1 -SkipNetwork
    .\setup_windows.ps1 -DefenderExclusions
-   .\setup_windows.ps1 -InstallSaltMinion -SaltMaster 192.168.56.10
+   .\setup_windows.ps1 -InstallSaltMinion -SaltMaster 192.168.1.7
 
  Does NOT create the lab "student" account — setup_phase1.ps1 does that.
  A reboot is required after rename; re-run with -SkipRename if needed.
@@ -17,18 +17,18 @@
 [CmdletBinding()]
 param(
     [string]$Hostname       = 'win19_srv01',
-    [string]$IPAddress      = '192.168.56.12',
+    [string]$IPAddress      = '192.168.1.11',
     [int]$PrefixLength      = 24,
-    [string]$Gateway        = '192.168.56.1',
+    [string]$Gateway        = '192.168.1.1',
     [string[]]$DnsServers   = @('1.1.1.1', '8.8.8.8'),
     [string]$InterfaceAlias = '',
-    [string]$KaliIp         = '192.168.56.10',
-    [string]$UbuntuIp       = '192.168.56.11',
+    [string]$KaliIp         = '192.168.1.7',
+    [string]$UbuntuIp       = '192.168.1.10',
     [switch]$SkipNetwork,
     [switch]$SkipRename,
     [switch]$DefenderExclusions,
     [switch]$InstallSaltMinion,
-    [string]$SaltMaster     = '192.168.56.10',
+    [string]$SaltMaster     = '192.168.1.7',
     [string]$SaltMinionId   = ''
 )
 

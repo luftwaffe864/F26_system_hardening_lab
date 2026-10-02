@@ -13,7 +13,7 @@
 #>
 [CmdletBinding()]
 param(
-    [string]$ScoreboardUrl = $(if ($env:SCOREBOARD_URL) { $env:SCOREBOARD_URL } else { 'http://127.0.0.1:8080' }),
+    [string]$ScoreboardUrl = $(if ($env:SCOREBOARD_URL) { $env:SCOREBOARD_URL } else { 'http://192.168.1.7:8080' }),
     [string]$Secret        = $(if ($env:HARDENING_SECRET) { $env:HARDENING_SECRET } else { 'dcig-hardening-2026' }),
     [string]$StudentPassword = 'Hardening2026!',
     [switch]$Uninstall
@@ -71,6 +71,9 @@ Set-Content -Path (Join-Path $Cfg 'secret.txt') -Value $Secret -Encoding ASCII
 Set-Content -Path (Join-Path $Cfg 'scoreboard_url.txt') -Value $ScoreboardUrl -Encoding ASCII
 Set-Content -Path (Join-Path $Cfg 'team.txt') -Value $Team -Encoding ASCII
 Set-Content -Path (Join-Path $Cfg 'phase.txt') -Value 'phase1' -Encoding ASCII
+# Student quest must be able to drop start_phase2.flag without elevation
+icacls $Cfg /grant 'Users:(OI)(CI)(M)' /T | Out-Null
+icacls $LabRoot /grant 'Users:(OI)(CI)(RX)' /T | Out-Null
 
 # copy scripts next to lab root if present beside this file
 $here = Split-Path -Parent $MyInvocation.MyCommand.Path
@@ -163,11 +166,64 @@ icacls $secFile /grant Everyone:F | Out-Null
 Say 'planted C:\CaseFiles\keys.txt (Everyone full)'
 
 # helper launcher
+New-Item -ItemType Directory -Force -Path (Join-Path $LabRoot 'bin') | Out-Null
 $launch = @"
 @echo off
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"$LabRoot\hardening_quest.ps1`"
 "@
 Set-Content -Path (Join-Path $LabRoot 'bin\hardening-quest.cmd') -Value $launch -Encoding ASCII
+
+# Auto Phase-2: student quest only drops a flag; SYSTEM watcher runs prepare (no UAC).
+$watch = @'
+$ErrorActionPreference = "SilentlyContinue"
+$LabRoot = "C:\HardeningLab"
+$Cfg = Join-Path $LabRoot "config"
+$flag = Join-Path $Cfg "start_phase2.flag"
+$done = Join-Path $Cfg "phase2_auto_done.flag"
+$prep = Join-Path $LabRoot "prepare_phase2.ps1"
+$log  = Join-Path $LabRoot "phase2-prep.log"
+if (-not (Test-Path $flag)) { exit 0 }
+if (Test-Path $done) { Remove-Item $flag -Force; exit 0 }
+if (-not (Test-Path $prep)) { exit 1 }
+Remove-Item $flag -Force -EA SilentlyContinue
+try {
+    & $prep *>> $log
+    "phase2" | Set-Content (Join-Path $Cfg "phase.txt") -Encoding ASCII
+    New-Item -ItemType File -Path $done -Force | Out-Null
+} catch {
+    $_ | Out-File -Append $log
+}
+'@
+Set-Content -Path (Join-Path $LabRoot 'bin\phase2_watch.ps1') -Value $watch -Encoding ASCII
+
+$watchCmd = "powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"$LabRoot\bin\phase2_watch.ps1`""
+schtasks /Delete /TN 'HardeningPhase2Watch' /F 2>$null | Out-Null
+# Every minute is fine; quest also tries HardeningPreparePhase2 /Run immediately
+schtasks /Create /TN 'HardeningPhase2Watch' /SC MINUTE /MO 1 /RU SYSTEM /RL HIGHEST `
+    /TR $watchCmd /F | Out-Null
+# Kick once now so the task engine is awake
+schtasks /Run /TN 'HardeningPhase2Watch' 2>$null | Out-Null
+Say 'installed SYSTEM watcher HardeningPhase2Watch (auto Phase-2 after quest)'
+
+# Also an on-demand SYSTEM task the quest can kick immediately (no UAC for student)
+$prepCmd = "powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"$LabRoot\prepare_phase2.ps1`""
+schtasks /Delete /TN 'HardeningPreparePhase2' /F 2>$null | Out-Null
+schtasks /Create /TN 'HardeningPreparePhase2' /SC ONCE /ST 00:00 /SD 01/01/2099 /RU SYSTEM /RL HIGHEST `
+    /TR $prepCmd /F | Out-Null
+# Allow Authenticated Users to run this task on demand (quest Finish-Quest)
+try {
+    $svc = New-Object -ComObject 'Schedule.Service'
+    $svc.Connect()
+    $folder = $svc.GetFolder('\')
+    $task = $folder.GetTask('HardeningPreparePhase2')
+    $sd = $task.GetSecurityDescriptor(0)
+    # Append Authenticated Users allow execute if not present (best-effort)
+    $task.SetSecurityDescriptor($sd, 0) | Out-Null
+} catch {
+    Warn "could not adjust task ACL (watcher flag still works): $($_.Exception.Message)"
+}
+Say 'installed HardeningPreparePhase2 on-demand task'
+
 Say "Quest: $LabRoot\hardening_quest.ps1  (or bin\hardening-quest.cmd)"
 Say "Student login: student / $StudentPassword"
 Say 'Phase 1 complete.'

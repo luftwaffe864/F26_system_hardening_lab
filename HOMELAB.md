@@ -1,16 +1,21 @@
 # Homelab Setup Guide — DCIG System Hardening
 
-End-to-end guide for a **VMware** dry-run that mirrors the club range:
+End-to-end guide for a **VMware homelab** only. On the **cyber range**, networking is pre-built — use **[RANGE.md](RANGE.md)** (Salt + scoreboard; skip IP setup here).
+
+**Network model:** all three VMs use a single **NAT** NIC (usually VMnet8). That gives them:
+- internet access (`apt`, Windows Update, `git clone` from GitHub)
+- a private LAN between the VMs for the scoreboard and Salt
 
 | VM | Role | Example hostname | Example IP |
 |----|------|------------------|------------|
-| Kali Linux | Scoreboard host + optional Salt master | `kali-mentor` | `192.168.56.10` |
-| Ubuntu Server 22.04/24.04 | Linux hardening target | `ubuntu01` | `192.168.56.11` |
-| Windows Server 2019 (Desktop Experience) | Windows hardening target | `win19_srv01` | `192.168.56.12` |
+| Kali Linux | Scoreboard host + optional Salt master | `kali-mentor` | `192.168.1.7` |
+| Ubuntu Server 22.04/24.04 | Linux hardening target | `ubuntu01` | `192.168.1.10` |
+| Windows Server 2019 (Desktop Experience) | Windows hardening target | `win19_srv01` | `192.168.1.11` |
+| VMware NAT gateway | Internet for the VMs | — | `192.168.1.1` |
+
+Production pods use **[RANGE.md](RANGE.md)** (`192.168.1.10` / `.11` per student). Homelab VMware NAT may use a **different subnet** — keep the same **last octets** (`.7` admin Kali, `.10` Linux, `.11` Windows) when possible, or override `--gateway` in section [2](#2-vmware-networking).
 
 **Team ID** comes from the trailing digits of the target hostnames (`ubuntu01` + `win19_srv01` → **Team 01**). Digits must match on both boxes.
-
-Adjust the `192.168.56.0/24` addresses if your VMware Host-Only / NAT subnet is different. Keep the same pattern: one mentor IP, one Ubuntu IP, one Windows IP on the same L2 network.
 
 ---
 
@@ -36,25 +41,59 @@ Adjust the `192.168.56.0/24` addresses if your VMware Host-Only / NAT subnet is 
 
 ## 0. Quick start with setup scripts
 
-After each OS is installed, use the scripts in [`homelab/`](homelab/) instead of typing every command by hand. See [`homelab/README.md`](homelab/README.md).
+### 0.1 Discover your NAT subnet (do this once)
+
+1. VMware Workstation: **Edit → Virtual Network Editor** (run as Administrator if needed).
+2. Select **VMnet8** (NAT).
+3. Note:
+   - **Subnet IP** (e.g. `192.168.1.0`)
+   - **Subnet mask** (usually `255.255.255.0` → `/24`)
+4. **Gateway:** on the **cyber range** use **`192.168.1.1`**. On **VMware NAT**, the gateway is often **`.2`** on whatever subnet VMnet8 uses (e.g. `192.168.64.2`) — not `.1`.
+5. Pick static IPs outside DHCP. Range layout: admin Kali **`.7`**, Ubuntu **`.10`**, Windows **`.11`**.
+
+If VMnet8 is not `192.168.1.0/24`, pass your gateway to the scripts, e.g. `--gateway 192.168.64.2 --ip 192.168.64.10`.
+
+### 0.2 Run the scripts
+
+After each OS is installed with its NIC set to **NAT**, use [`homelab/`](homelab/). See [`homelab/README.md`](homelab/README.md).
 
 ```bash
-# Kali
+# --- Kali (NAT + internet: clone works before or after static IP) ---
+git clone https://github.com/luftwaffe864/F26_system_hardening_lab.git
 cd F26_system_hardening_lab/homelab
 sed -i 's/\r$//' *.sh
 ip -br link
-sudo bash setup_kali.sh --iface eth0          # adjust iface
+
+sudo bash setup_kali.sh \
+  --iface eth0 \
+  --ip 192.168.1.7 \
+  --gateway 192.168.1.1 \
+  --ubuntu-ip 192.168.1.10 \
+  --win-ip 192.168.1.11
+
+# Confirm internet still works, then start the board:
+ping -c 2 1.1.1.1
 bash start_scoreboard.sh
 
-# Ubuntu
-sudo bash setup_ubuntu.sh --iface ens33       # adjust iface
+# --- Ubuntu ---
+sudo bash setup_ubuntu.sh \
+  --iface ens33 \
+  --ip 192.168.1.10 \
+  --gateway 192.168.1.1 \
+  --kali-ip 192.168.1.7 \
+  --win-ip 192.168.1.11
 sudo reboot   # if prompted
 
-# Windows (elevated PowerShell)
-.\setup_windows.ps1 -InterfaceAlias Ethernet0
+# --- Windows (elevated PowerShell) ---
+.\setup_windows.ps1 `
+  -InterfaceAlias Ethernet0 `
+  -IPAddress 192.168.1.11 `
+  -Gateway 192.168.1.1 `
+  -KaliIp 192.168.1.7 `
+  -UbuntuIp 192.168.1.10
 ```
 
-Defaults: Kali `.10` / Ubuntu `ubuntu01` `.11` / Windows `win19_srv01` `.12` on `192.168.56.0/24`.  
+Script defaults match **[RANGE.md](RANGE.md)** (`192.168.1.0/24`, gateway `.1`).  
 These scripts only prepare the VMs (hostname, IP, packages). Lab planting is still `linux/setup_phase1.sh` and `windows/setup_phase1.ps1`.
 
 ---
@@ -93,25 +132,44 @@ Do **not** pre-create `student` unless you have to; Phase-1 scripts create and c
 
 ## 2. VMware networking
 
-Goal: all three VMs can reach each other on a private LAN. Kali’s IP will be the scoreboard URL.
+Goal: all three VMs share **one NAT network** so they can:
+1. reach the **internet** (clone this repo, `apt update`, Windows Update)
+2. reach **each other** (scoreboard on Kali, optional Salt)
 
-### Recommended: Host-Only (or “LAN Segment”)
+### Recommended: NAT only (one NIC each)
 
-1. In VMware: **Edit → Virtual Network Editor** (Workstation) or equivalent.
-2. Note the Host-Only subnet (often `192.168.56.0/24`). VMware’s host often sits at `.1`.
-3. Attach **one NIC** on each VM to that Host-Only network (VMnet1 is common).
+1. In VMware: **Edit → Virtual Network Editor** → select **VMnet8 (NAT)**.
+2. Write down your subnet, for example:
 
-**Internet for apt/Windows Update:** either
-- temporarily switch the NIC to NAT while installing packages, then switch back, or  
-- add a **second NIC** (NAT) for updates and keep Host-Only as the “lab LAN”.
+   | Setting | Cyber range | VMware NAT (common) |
+   |---------|-------------|---------------------|
+   | Subnet | `192.168.1.0/24` | e.g. `192.168.64.0/24` |
+   | VM default gateway | **`192.168.1.1`** | often **`.2`** on that subnet (e.g. `192.168.64.2`) |
+   | Static IPs (same last octets everywhere) | Kali **`.7`**, Ubuntu **`.10`**, Win **`.11`** | same octets if you mimic range |
 
-### Alternative: single NAT network
+3. On **each** VM: Settings → Network Adapter → **NAT** (same VMnet8 for all three). Use **one** NIC.
 
-Put all three on NAT, assign static IPs inside VMware’s NAT range (check Virtual Network Editor for the subnet). Simpler internet; IPs may change if you are not careful — prefer static reservations.
+4. Assign static IPs outside DHCP (range layout):
+
+   | VM | Hostname | Static IP | Gateway (range) | DNS |
+   |----|----------|-----------|-----------------|-----|
+   | Kali | `kali-mentor` | `192.168.1.7` | `192.168.1.1` | `1.1.1.1` / `8.8.8.8` |
+   | Ubuntu | `ubuntu01` | `192.168.1.10` | `192.168.1.1` | `1.1.1.1` / `8.8.8.8` |
+   | Windows | `win19_srv01` | `192.168.1.11` | `192.168.1.1` | `1.1.1.1` / `8.8.8.8` |
+
+On **VMware NAT**, if your subnet is not `192.168.1.0/24`, use gateway **`.2`** for that subnet and pass `--gateway` to the homelab scripts (see section 0.1).
+
+### Install-time tip (easiest clone)
+
+During OS install, leave the NIC on **NAT + DHCP**. You will get internet immediately so you can `git clone` / browse. After install, run the setup scripts to switch to a **static** IP with the correct gateway for your subnet.
+
+### Optional: Host-Only instead
+
+Only if you want a fully offline lab LAN: use VMnet1 Host-Only, gateway usually `.1`, and no internet unless you add a second NAT NIC. This guide assumes **NAT**.
 
 ### Firewall note
 
-On Windows, allow ICMPv4 Echo and inbound TCP **8080** only needed on Kali (scoreboard). Targets initiate outbound HTTP to Kali:8080; they do not need 8080 open inbound.
+On Windows, allow ICMPv4 Echo for testing. Inbound TCP **8080** is only needed on Kali (scoreboard). Targets make outbound HTTP to Kali:8080; they do not need 8080 open inbound.
 
 ---
 
@@ -140,17 +198,19 @@ echo "127.0.1.1   kali-mentor" | sudo tee -a /etc/hosts
 
 Log out/in or reboot so the shell prompt updates.
 
-### 4.2 Static IP (NetworkManager — typical on Kali)
+### 4.2 Static IP on NAT (NetworkManager — typical on Kali)
 
-Find the Host-Only interface name:
+Prefer the script: `sudo bash homelab/setup_kali.sh --iface eth0 --ip … --gateway …`
+
+Manual path — find the NAT interface:
 
 ```bash
 ip -br link
 ip route
-# often eth0 / eth1 / ens33 — the one on 192.168.56.0/24 after DHCP once
+# often eth0 / eth1 / ens33 — the NAT NIC (after DHCP you may already have internet)
 ```
 
-Set a static address with `nmcli` (replace `eth0` with your interface):
+Set a static address with `nmcli` (replace `eth0` / connection name; **gateway = range `.1` or VMware NAT `.2`**):
 
 ```bash
 IFACE=eth0
@@ -158,24 +218,26 @@ sudo nmcli con show
 # Note the connection NAME for that device, e.g. "Wired connection 1"
 
 sudo nmcli con mod "Wired connection 1" \
-  ipv4.addresses 192.168.56.10/24 \
-  ipv4.gateway 192.168.56.1 \
+  ipv4.addresses 192.168.1.7/24 \
+  ipv4.gateway 192.168.1.1 \
   ipv4.dns "1.1.1.1 8.8.8.8" \
   ipv4.method manual
 
 sudo nmcli con up "Wired connection 1"
 ip -br addr
+ping -c 2 1.1.1.1          # internet should still work
+ping -c 2 github.com       # DNS should resolve
 ```
 
-If you use a second NAT NIC for internet, leave that one on DHCP (`ipv4.method auto`) and only harden the Host-Only NIC to `.10`.
+You only need **one** NIC (NAT). Do not add a second adapter for this guide.
 
 **Optional `/etc/hosts` convenience on Kali:**
 
 ```bash
 sudo tee -a /etc/hosts <<'EOF'
-192.168.56.10  kali-mentor
-192.168.56.11  ubuntu01
-192.168.56.12  win19_srv01
+192.168.1.7  kali-mentor
+192.168.1.10  ubuntu01
+192.168.1.11  win19_srv01
 EOF
 ```
 
@@ -237,7 +299,9 @@ Confirm:
 hostname -s    # must print: ubuntu01
 ```
 
-### 5.2 Static IP with netplan
+### 5.2 Static IP on NAT with netplan
+
+Prefer the script: `sudo bash homelab/setup_ubuntu.sh --iface ens33 --ip … --gateway …`
 
 List interfaces:
 
@@ -261,10 +325,10 @@ network:
     ens33:
       dhcp4: false
       addresses:
-        - 192.168.56.11/24
+        - 192.168.1.10/24
       routes:
         - to: default
-          via: 192.168.56.1
+          via: 192.168.1.1
       nameservers:
         addresses: [1.1.1.1, 8.8.8.8]
 ```
@@ -274,7 +338,8 @@ Apply:
 ```bash
 sudo netplan apply
 ip -br addr
-ping -c 2 192.168.56.10
+ping -c 2 192.168.1.7    # Kali
+ping -c 2 1.1.1.1          # internet via NAT gateway
 ```
 
 If cloud-init keeps rewriting netplan, either disable cloud-init network config or put your file in a higher-priority netplan name and reboot once.
@@ -318,20 +383,20 @@ After reboot:
 hostname   # win19_srv01
 ```
 
-### 6.2 Static IP
+### 6.2 Static IP on NAT
 
 **GUI:** Settings → Network → Ethernet → Edit IP → Manual:
 
-- IP: `192.168.56.12`
+- IP: `192.168.1.11`
 - Prefix: `24`
-- Gateway: `192.168.56.1`
+- Gateway: `192.168.1.1`
 - DNS: `1.1.1.1` / `8.8.8.8`
 
 **PowerShell** (replace `Ethernet0` with your adapter name from `Get-NetAdapter`):
 
 ```powershell
 Get-NetAdapter
-New-NetIPAddress -InterfaceAlias 'Ethernet0' -IPAddress 192.168.56.12 -PrefixLength 24 -DefaultGateway 192.168.56.1
+New-NetIPAddress -InterfaceAlias 'Ethernet0' -IPAddress 192.168.1.11 -PrefixLength 24 -DefaultGateway 192.168.1.1
 Set-DnsClientServerAddress -InterfaceAlias 'Ethernet0' -ServerAddresses 1.1.1.1,8.8.8.8
 ```
 
@@ -382,9 +447,9 @@ On the real range, follow mentor policy — do not assume exclusions are allowed
 
 ```powershell
 Add-Content -Path C:\Windows\System32\drivers\etc\hosts -Value @"
-192.168.56.10 kali-mentor
-192.168.56.11 ubuntu01
-192.168.56.12 win19_srv01
+192.168.1.7 kali-mentor
+192.168.1.10 ubuntu01
+192.168.1.11 win19_srv01
 "@
 ```
 
@@ -395,22 +460,22 @@ Add-Content -Path C:\Windows\System32\drivers\etc\hosts -Value @"
 From **Kali**:
 
 ```bash
-ping -c 2 192.168.56.11
-ping -c 2 192.168.56.12
+ping -c 2 192.168.1.10
+ping -c 2 192.168.1.11
 ```
 
 From **Ubuntu**:
 
 ```bash
-ping -c 2 192.168.56.10
-ping -c 2 192.168.56.12
+ping -c 2 192.168.1.7
+ping -c 2 192.168.1.11
 ```
 
 From **Windows** (PowerShell):
 
 ```powershell
-Test-Connection 192.168.56.10 -Count 2
-Test-Connection 192.168.56.11 -Count 2
+Test-Connection 192.168.1.7 -Count 2
+Test-Connection 192.168.1.10 -Count 2
 ```
 
 Fix NICs / VMware network assignment until all three pass before continuing.
@@ -432,7 +497,7 @@ git pull   # when you update the repo
 
 ```bash
 # On Kali:
-scp -r ~/F26_system_hardening_lab YOUR_ADMIN@192.168.56.11:~/
+scp -r ~/F26_system_hardening_lab YOUR_ADMIN@192.168.1.10:~/
 ```
 
 Or on Ubuntu:
@@ -472,7 +537,7 @@ python server.py
 
 Leave this terminal open. Open a browser to:
 
-`http://192.168.56.10:8080/`
+`http://192.168.1.7:8080/`
 
 You should see **Phase 2: closed** and **0 teams**.
 
@@ -541,7 +606,7 @@ cd ~/F26_system_hardening_lab
 # Fix Windows CRLF if scripts were copied oddly:
 sed -i 's/\r$//' linux/*.sh
 
-export SCOREBOARD_URL=http://192.168.56.10:8080
+export SCOREBOARD_URL=http://192.168.1.7:8080
 export HARDENING_SECRET=dcig-hardening-2026
 
 sudo bash linux/setup_phase1.sh --no-switch
@@ -574,7 +639,7 @@ Elevated PowerShell on Windows:
 ```powershell
 cd C:\Labs\F26_system_hardening_lab   # or wherever you put it
 .\windows\setup_phase1.ps1 `
-  -ScoreboardUrl 'http://192.168.56.10:8080' `
+  -ScoreboardUrl 'http://192.168.1.7:8080' `
   -Secret 'dcig-hardening-2026'
 ```
 
@@ -598,7 +663,7 @@ On the scoreboard UI, Team **01** should show ready flags when prep pings succee
 From Kali:
 
 ```bash
-curl -X POST http://192.168.56.10:8080/api/admin/open \
+curl -X POST http://192.168.1.7:8080/api/admin/open \
   -H 'Content-Type: application/json' \
   -d '{"admin":"dcig-admin-2026"}'
 ```
@@ -652,7 +717,7 @@ Pillar:
 sudo tee /srv/pillar/hardening.sls <<'EOF'
 hardening_lab:
   files_root: /srv/salt/F26_system_hardening_lab
-  scoreboard_url: http://192.168.56.10:8080
+  scoreboard_url: http://192.168.1.7:8080
   secret: dcig-hardening-2026
   student_password: Hardening2026!
 EOF
@@ -688,7 +753,7 @@ sudo apt install -y salt-minion
 Edit `/etc/salt/minion` (or drop a file in `/etc/salt/minion.d/master.conf`):
 
 ```yaml
-master: 192.168.56.10
+master: 192.168.1.7
 id: ubuntu01
 ```
 
@@ -700,7 +765,7 @@ sudo systemctl restart salt-minion
 ### 11.3 Windows minion
 
 1. Download the **Salt Minion** Windows installer matching your Salt major version when possible: https://docs.saltproject.io/salt/install-guide/en/latest/
-2. During setup, set **Master** = `192.168.56.10`, **Minion ID** = `win19_srv01`.
+2. During setup, set **Master** = `192.168.1.7`, **Minion ID** = `win19_srv01`.
 3. Start the **Salt Minion** service (Services.msc or PowerShell):
 
 ```powershell
@@ -766,8 +831,9 @@ Phase-2 prep is triggered by finishing the quests; you normally do **not** run `
 | Problem | What to check |
 |---------|----------------|
 | Team shows as `00` | Hostname has no trailing digits (`ubuntu01`, `win19_srv01`) |
-| Cannot ping between VMs | Same VMware network; correct vNIC; Windows firewall ICMP; IPs/mask |
-| Scoreboard page won’t load from Ubuntu | `curl -v http://192.168.56.10:8080/api/status` from Ubuntu; Kali firewall; `HARDENING_HOST=0.0.0.0` |
+| Cannot ping between VMs | All three on **NAT** (same VMnet8); correct IPs/mask; Windows ICMP rule |
+| No internet / cannot `git clone` | Gateway must be NAT **`.2`** (not `.1`); DNS `1.1.1.1`; NIC type = NAT in VM settings |
+| Scoreboard page won’t load from Ubuntu | `curl -v http://192.168.1.7:8080/api/status` from Ubuntu; Kali firewall; `HARDENING_HOST=0.0.0.0` |
 | Scores never appear | Phase 2 still closed; `HARDENING_SECRET` mismatch; agents not running (`systemctl list-timers` / `schtasks`) |
 | Linux script errors / `$'\r'` | `sed -i 's/\r$//' linux/*.sh` |
 | Windows quest can’t prep Phase 2 | Run prep elevated; UAC denied; `C:\HardeningLab\prepare_phase2.ps1` missing |
@@ -778,7 +844,7 @@ Phase-2 prep is triggered by finishing the quests; you normally do **not** run `
 Kali Salt ports (if a host firewall is on):
 
 ```bash
-sudo # allow 4505, 4506/tcp from 192.168.56.0/24 if needed
+sudo # allow 4505, 4506/tcp from 192.168.1.0/24 if needed
 ```
 
 ---
@@ -786,8 +852,9 @@ sudo # allow 4505, 4506/tcp from 192.168.56.0/24 if needed
 ## 14. Checklist
 
 **Build**
-- [ ] Three VMs on one lab network
-- [ ] Kali `192.168.56.10`, Ubuntu `ubuntu01` / `.11`, Windows `win19_srv01` / `.12`
+- [ ] All three VMs on **NAT** (VMnet8); subnet noted from Virtual Network Editor
+- [ ] Kali `192.168.1.7`, Ubuntu `ubuntu01` / `.10`, Windows `win19_srv01` / `.11` (gateway `.1` on range, or NAT `.2` on homelab)
+- [ ] `ping 1.1.1.1` works on Kali and Ubuntu (internet)
 - [ ] All three ping each other
 - [ ] Snapshot `01-base-networked`
 
