@@ -216,17 +216,29 @@ New-Item -ItemType Directory -Force -Path (Join-Path $Bloat 'Plugins') | Out-Nul
 
 # rogue binary + run key (harmless loop via powershell copy)
 $burn = Join-Path $Rogue 'burn.ps1'
+$rogueExe = Join-Path $Rogue 'health_update.exe'
 @'
 while ($true) { Start-Sleep -Seconds 30 }
 '@ | Set-Content -Path $burn -Encoding ASCII
-Copy-Item "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" `
-          (Join-Path $Rogue 'health_update.exe') -Force
-$cmd = '"' + (Join-Path $Rogue 'health_update.exe') + '" -WindowStyle Hidden -ExecutionPolicy Bypass -File "' + $burn + '"'
+# Re-runs lock health_update.exe if a previous plant is still running
+Get-Process -Name 'health_update' -EA SilentlyContinue | Stop-Process -Force -EA SilentlyContinue
+Start-Sleep -Milliseconds 500
+try {
+    Copy-Item "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" $rogueExe -Force
+} catch {
+    # Still locked — rename aside and copy fresh
+    Remove-Item "$rogueExe.bak" -Force -EA SilentlyContinue
+    if (Test-Path $rogueExe) {
+        Rename-Item $rogueExe "$rogueExe.bak" -Force -EA SilentlyContinue
+    }
+    Copy-Item "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" $rogueExe -Force
+}
+$cmd = '"' + $rogueExe + '" -WindowStyle Hidden -ExecutionPolicy Bypass -File "' + $burn + '"'
 New-ItemProperty -Path $RunKey -Name 'SysHealthUpdate' -Value $cmd -PropertyType String -Force | Out-Null
 Say 'planted startup persistence SysHealthUpdate'
 
 # start it once for Task Manager visibility
-Start-Process -FilePath (Join-Path $Rogue 'health_update.exe') `
+Start-Process -FilePath $rogueExe `
     -ArgumentList '-WindowStyle','Hidden','-ExecutionPolicy','Bypass','-File',$burn `
     -WindowStyle Hidden -EA SilentlyContinue
 
