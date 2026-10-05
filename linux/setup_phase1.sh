@@ -54,6 +54,10 @@ install_dirs() {
   printf '%s\n' "$STUDENT_PW" > "$CFG/student_password"
   chmod 600 "$CFG/secret" "$CFG/student_password"
   chmod 644 "$CFG/scoreboard_url" "$CFG/team" "$CFG/phase"
+  # Clear prior quest / Phase-2 markers so mentors can re-test after re-apply
+  rm -rf /home/"$STUDENT"/.hardening-quest 2>/dev/null || true
+  rm -f "$CFG/phase2_auto_done.flag" "$CFG/start_phase2.flag" 2>/dev/null || true
+  rm -f /home/"$STUDENT"/PHASE2.txt /var/log/hardening-phase2-prep.log 2>/dev/null || true
 }
 
 install_student() {

@@ -154,6 +154,20 @@ icacls (Join-Path $Cfg 'student_password.txt') /inheritance:r /grant 'SYSTEM:F' 
 icacls $Cfg /grant 'Users:(OI)(CI)(M)' /T | Out-Null
 icacls $LabRoot /grant 'Users:(OI)(CI)(RX)' /T | Out-Null
 
+# Clear prior quest progress + Phase-2 markers so mentors can re-test after re-apply
+foreach ($qd in @(
+    (Join-Path $env:LOCALAPPDATA 'HardeningQuest'),
+    'C:\Users\student\AppData\Local\HardeningQuest'
+)) {
+    Remove-Item -LiteralPath $qd -Recurse -Force -EA SilentlyContinue
+}
+Remove-Item -Force -EA SilentlyContinue @(
+    (Join-Path $Cfg 'phase2_auto_done.flag'),
+    (Join-Path $Cfg 'start_phase2.flag'),
+    (Join-Path $LabRoot 'PHASE2.txt')
+)
+Say 'reset quest progress + Phase-2 flags (ready for a fresh Phase 1 run)'
+
 # copy scripts next to lab root if present beside this file
 $here = Split-Path -Parent $MyInvocation.MyCommand.Path
 foreach ($f in @('hardening_quest.ps1','prepare_phase2.ps1','score_agent.ps1','Ensure-LabAccess.ps1')) {

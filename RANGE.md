@@ -55,6 +55,16 @@ sudo salt -G 'role:hardening-windows' state.apply hardening-lab
 
 That runs `linux/setup_phase1.sh` / `windows/setup_phase1.ps1` (plants + quest install + **auto Phase-2 hooks**). When a student finishes the quest, Phase-2 prep starts by itself — they never run `prepare_phase2` manually.
 
+**Reset quests for mentor re-test** (clears progress, re-plants Phase 1, clears Phase-2 done flags):
+
+```bash
+sudo salt -L 'dcig-syslab-team30-ubuntu,win19_srv30' state.apply hardening-lab
+# optional: wipe Team 30 scoreboard row
+curl -X POST http://172.31.31.2:8080/api/admin/reset \
+  -H 'Content-Type: application/json' \
+  -d '{"admin":"dcig-admin-2026"}'
+```
+
 After pulling state updates on the master, re-copy the state file:
 
 ```bash
