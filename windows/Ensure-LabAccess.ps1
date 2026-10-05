@@ -19,12 +19,12 @@ $sec = ConvertTo-SecureString $plain -AsPlainText -Force
 # --- student account ---------------------------------------------------------
 if (-not (Get-LocalUser -Name $Student -EA SilentlyContinue)) {
     New-LocalUser -Name $Student -Password $sec -FullName 'DCIG Student' `
-        -PasswordNeverExpires -UserMayNotChangePassword | Out-Null
+        -PasswordNeverExpires | Out-Null
 } else {
-    Set-LocalUser -Name $Student -Password $sec -PasswordNeverExpires $true `
-        -UserMayNotChangePassword $true -AccountNeverExpires | Out-Null
-    Enable-LocalUser -Name $Student -EA SilentlyContinue | Out-Null
+    Set-LocalUser -Name $Student -Password $sec -PasswordNeverExpires $true | Out-Null
 }
+Enable-LocalUser -Name $Student -EA SilentlyContinue | Out-Null
+cmd /c "net user $Student /passwordchg:no" | Out-Null
 Add-LocalGroupMember -Group 'Administrators' -Member $Student -EA SilentlyContinue | Out-Null
 
 # --- Remote Desktop ----------------------------------------------------------
