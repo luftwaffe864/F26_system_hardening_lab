@@ -27,7 +27,7 @@ svc_active()  { systemctl is-active "$1" 2>/dev/null | grep -qx active; }
 svc_enabled() { systemctl is-enabled "$1" 2>/dev/null | grep -qx enabled; }
 
 mkdir -p "$STATE"
-LEVEL=1; SCORE=0; HINTS_USED=0; LAST_OUT=""
+LEVEL=1; SCORE=0; HINTS_USED=0
 [[ -f "$PROGRESS" ]] && LEVEL=$(( $(cat "$PROGRESS") + 1 ))
 [[ -f "$SCOREFILE" ]] && SCORE=$(cat "$SCOREFILE")
 
@@ -84,13 +84,14 @@ Level auto-passes when cache-sync is stopped and disabled." \
 "Phase 2 will have stealthier service names — same commands." \
 auto "systemctl disable --now cache-sync"
 
-# 5 — firewall
+# 5 — firewall (--force skips the y|n prompt that breaks this REPL over SSH)
 add_level 1 "ufw — enable firewall" \
 "Tool:  sudo ufw status
-        sudo ufw enable
-Check status, then enable. SSH (port 22) is pre-allowed so you won't lock yourself out." \
+        sudo ufw --force enable
+Check status, then enable with --force (no y/n prompt). SSH (port 22) is pre-allowed
+so you won't lock yourself out. Or skip the command:  answer ufw" \
 "Firewall on = free points in Phase 2 if someone turned it off." \
-auto "sudo ufw enable"
+auto "sudo ufw --force enable|answer ufw"
 
 # 6 — cron + remove bloat (one quick combo)
 add_level 1 "cron + rm — persistence & junk software" \
@@ -100,9 +101,9 @@ add_level 1 "cron + rm — persistence & junk software" \
 2) Remove the fake cleaner and its cron:
      sudo rm -rf /opt/PCCleaner
      sudo rm -f /etc/cron.d/pccleaner
-Auto-passes when both are gone." \
+Auto-passes when both are gone. Or skip the deletes:  answer pccleaner" \
 "Phase 2: more cron paths and /opt junk — same pattern." \
-auto "rm PCCleaner pccleaner"
+auto "rm PCCleaner|answer pccleaner"
 
 TOTAL=${#L_TITLE[@]}
 
@@ -110,8 +111,21 @@ check_1()  { [[ "$(norm "$1")" == "$(norm "$(as_root cat "$CFG/team" 2>/dev/null
 check_2()  { [[ "$(norm "$1")" == "tempadmin" ]]; }
 check_3()  { [[ "$(norm "$1")" == "9999" ]]; }
 check_4()  { ! svc_active cache-sync && ! svc_enabled cache-sync; }
-check_5()  { command -v ufw >/dev/null && ufw status 2>/dev/null | head -1 | grep -qi 'active'; }
-check_6()  { [[ ! -e /opt/PCCleaner ]] && [[ ! -e /etc/cron.d/pccleaner ]]; }
+check_5()  {
+  # Auto path: firewall already active. Answer path: they typed the tool name.
+  if [[ -n "${1:-}" ]]; then
+    [[ "$(norm "$1")" == "ufw" ]]
+  else
+    command -v ufw >/dev/null && ufw status 2>/dev/null | head -1 | grep -qi 'active'
+  fi
+}
+check_6()  {
+  if [[ -n "${1:-}" ]]; then
+    [[ "$(norm "$1")" == "pccleaner" ]]
+  else
+    [[ ! -e /opt/PCCleaner ]] && [[ ! -e /etc/cron.d/pccleaner ]]
+  fi
+}
 
 base_points() { echo 10; }
 level_points() { local p=$(( $(base_points) - 2 * HINTS_USED )); (( p < 0 )) && p=0; echo "$p"; }
@@ -175,7 +189,14 @@ try_auto() {
 }
 
 try_answer() {
-  [[ "${L_TYPE[$((LEVEL - 1))]}" == "answer" ]] || { warn "This level auto-passes; no answer needed."; return; }
+  local t="${L_TYPE[$((LEVEL - 1))]}"
+  # "auto" levels may still accept answer <value> when the hint string includes it
+  if [[ "$t" != "answer" && "$t" != "auto" ]]; then
+    warn "This level does not take an answer."; return
+  fi
+  if [[ "$t" == "auto" && "${L_HINTS[$((LEVEL - 1))]}" != *answer* ]]; then
+    warn "This level auto-passes; no answer needed."; return
+  fi
   [[ -n "${1:-}" ]] || { warn "Usage: answer <value>"; return; }
   if "check_$LEVEL" "$1"; then advance; else err "Not it. Try hint."; fi
 }
@@ -229,9 +250,14 @@ show_task
 
 trap 'printf "\n"; warn "Ctrl+C stopped the command, not the quest. Type quit to exit.";' INT
 
+# Always drive the REPL from the real TTY. Shared stdin + a child command
+# (or Guacamole/SSH quirks) otherwise EOFs `read` and silently drops to the shell.
+QUEST_IN=/dev/tty
+[[ -r "$QUEST_IN" ]] || QUEST_IN=/dev/stdin
+
 while true; do
   printf '%s hardening:%s%s%s> %s' "$DIM" "$N" "$C" "$LEVEL" "$N"
-  IFS= read -r cmd || { say ""; break; }
+  IFS= read -r cmd <"$QUEST_IN" || { say ""; break; }
   case "$cmd" in
     "" ) continue ;;
     help ) show_help ;;
@@ -248,13 +274,10 @@ while true; do
     answer\ * )
       try_answer "${cmd#answer }" ;;
     * )
-      LAST_OUT=""
+      # Subshell so command redirects cannot poison this loop's stdin.
       set +e
-      LAST_OUT="$(eval "$cmd" 2>&1)"
-      rc=$?
-      set -e
-      printf '%s\n' "$LAST_OUT"
-      (( rc == 0 )) || true
+      ( eval "$cmd" ) <"$QUEST_IN"
+      set +e
       try_auto
       ;;
   esac
