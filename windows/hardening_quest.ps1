@@ -1,6 +1,6 @@
 <#
 ================================================================================
- DCIG System Hardening — Windows Quest (Phase 1)
+ DCIG System Hardening - Windows Quest (Phase 1)
  Short ~10 min tool drill, then auto Phase-2 prep.
 
    powershell.exe -ExecutionPolicy Bypass -File C:\HardeningLab\hardening_quest.ps1
@@ -35,41 +35,41 @@ function Get-Team {
     return '00'
 }
 
-# Short tool drill — teach command, use once, move on (~10 min)
+# Short tool drill - teach command, use once, move on (~10 min)
 $Levels = @(
     @{
-        M=1; Title='Get-Content — read a file'
+        M=1; Title='Get-Content - read a file'
         Task="Tool:  Get-Content <path>`nRun:   Get-Content C:\HardeningLab\briefing.txt`nSubmit your two-digit team number.  answer <NN>"
         Why='You will read notes and configs in Phase 2.'
         Type='answer'; Hints=@('Get-Content C:\HardeningLab\briefing.txt','Look for Team:')
     },
     @{
-        M=1; Title='Get-LocalGroupMember — who is admin?'
+        M=1; Title='Get-LocalGroupMember - who is admin?'
         Task="Tool:  Get-LocalGroupMember -Group Administrators`nRun that. Which extra user should NOT be an admin?  answer <username>"
         Why='Phase 2: hunt unexpected Administrators the same way.'
         Type='answer'; Hints=@('Get-LocalGroupMember Administrators','tempadmin')
     },
     @{
-        M=1; Title='Run key — startup persistence'
+        M=1; Title='Run key - startup persistence'
         Task="Tool:  Get-ItemProperty HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run`nSubmit the suspicious value NAME.  answer <name>"
         Why='Run keys are a classic Windows persistence check (Task Manager > Startup also works).'
         Type='answer'; Hints=@('Get-ItemProperty ...\Run','SysHealthUpdate')
     },
     @{
-        M=1; Title='Remove-ItemProperty — delete a Run key'
+        M=1; Title='Remove-ItemProperty - delete a Run key'
         Task="Tool:  Remove-ItemProperty -Path HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run -Name <Name>`nPractice:`n  Remove-ItemProperty -Path HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run -Name SysHealthUpdate`nAuto-passes when that value is gone."
-        Why='Practice removing bad Run values — Phase 2 leans on other Windows controls, but this skill still matters.'
+        Why='Practice removing bad Run values - Phase 2 leans on other Windows controls, but this skill still matters.'
         Type='auto'; Hints=@('Remove-ItemProperty ... -Name SysHealthUpdate')
     },
     @{
-        M=1; Title='Firewall — find and remove a bad rule'
-        Task="Tools:  Get-NetFirewallRule -DisplayName '*Support*'`n        Remove-NetFirewallRule -DisplayName 'Remote Admin Support'`n   Or:  wf.msc`nRemove/disable 'Remote Admin Support' only — leave 'DCIG Lab RDP Access' alone. Auto-passes when gone or disabled."
-        Why='Phase 2 may plant inbound allows — same cmdlets / wf.msc.'
+        M=1; Title='Firewall - find and remove a bad rule'
+        Task="Tools:  Get-NetFirewallRule -DisplayName '*Support*'`n        Remove-NetFirewallRule -DisplayName 'Remote Admin Support'`n   Or:  wf.msc`nRemove/disable 'Remote Admin Support' only - leave 'DCIG Lab RDP Access' alone. Auto-passes when gone or disabled."
+        Why='Phase 2 may plant inbound allows - same cmdlets / wf.msc.'
         Type='auto'; Hints=@('Remove-NetFirewallRule -DisplayName "Remote Admin Support"')
     },
     @{
-        M=1; Title='Defender — real-time protection ON'
-        Task="Tools:  Get-MpPreference`n        Set-MpPreference -DisableRealtimeMonitoring `$false`n   Or:  Windows Security > Virus & threat protection`nTurn real-time ON. Auto-passes when monitoring is enabled."
+        M=1; Title='Defender - real-time protection ON'
+        Task="Tools:  Get-MpPreference`n        Set-MpPreference -DisableRealtimeMonitoring `$false`n   Or:  Windows Security > Virus and threat protection`nTurn real-time ON. Auto-passes when monitoring is enabled."
         Why='Firewall is not antivirus. Phase 2 scores Defender being on.'
         Type='auto'; Hints=@('Set-MpPreference -DisableRealtimeMonitoring $false','Windows Security GUI')
     }
@@ -102,7 +102,7 @@ function Test-Level([int]$idx, [string]$Answer) {
 
 function Show-Banner {
     Write-Host ''
-    Write-Host '  HARDENING QUEST  ·  Windows  ·  ~10 min tool drill' -ForegroundColor Cyan
+    Write-Host '  HARDENING QUEST  -  Windows  -  ~10 min tool drill' -ForegroundColor Cyan
     Write-Host '  Learn the tools for the CyberPatriot race. Type help any time.' -ForegroundColor DarkGray
     Write-Host ''
 }
@@ -115,16 +115,16 @@ function Show-Help {
 function Show-Task {
     if ($script:Level -gt $Levels.Count) { return }
     $L = $Levels[$script:Level - 1]
-    Write-Host ('─' * 56) -ForegroundColor DarkGray
-    Write-Host ("  DRILL · {0}" -f $L.Title) -ForegroundColor White
+    Write-Host ('-' * 56) -ForegroundColor DarkGray
+    Write-Host ("  DRILL - {0}" -f $L.Title) -ForegroundColor White
     Write-Host ("  {0}" -f $L.Task)
     Write-Host ("  Why: {0}" -f $L.Why) -ForegroundColor DarkGray
-    Write-Host ('─' * 56) -ForegroundColor DarkGray
+    Write-Host ('-' * 56) -ForegroundColor DarkGray
 }
 
 function Advance([int]$Pts) {
     $script:Score += $Pts
-    Write-Host ("✔ Level complete  +{0}   (total {1})" -f $Pts, $script:Score) -ForegroundColor Green
+    Write-Host ("OK Level complete  +{0}   (total {1})" -f $Pts, $script:Score) -ForegroundColor Green
     $script:Level++
     $script:Hints = 0
     Save-Progress
@@ -138,7 +138,7 @@ function Finish-Quest {
     Write-Host ("  Windows tool drill complete. Score: {0}" -f $script:Score) -ForegroundColor Green
     Write-Host ''
     Write-Host '  Please wait while we prepare your system for the CyberPatriot race...' -ForegroundColor Yellow
-    Write-Host '  (Phase 2 prep starts automatically — do not run any extra scripts.)' -ForegroundColor DarkGray
+    Write-Host '  (Phase 2 prep starts automatically - do not run any extra scripts.)' -ForegroundColor DarkGray
     Write-Host ''
 
     $prep = Join-Path $LabRoot 'prepare_phase2.ps1'
@@ -190,11 +190,11 @@ function Finish-Quest {
     Write-Host ''
 
     if ($ready) {
-        Write-Host '  Phase 2 is ready — spend your time here hunting findings.' -ForegroundColor Green
+        Write-Host '  Phase 2 is ready - spend your time here hunting findings.' -ForegroundColor Green
     } else {
         Write-Host '  Phase 2 prep is still running (or needs a mentor). Check C:\HardeningLab\phase2-prep.log' -ForegroundColor Yellow
     }
-    Write-Host ("  When mentors open scoring, fix findings for Team {0} — Linux + Windows both count." -f $team) -ForegroundColor Cyan
+    Write-Host ("  When mentors open scoring, fix findings for Team {0} - Linux + Windows both count." -f $team) -ForegroundColor Cyan
     Write-Host '  Read C:\HardeningLab\PHASE2.txt for categories. Double-click Desktop Scoreboard for live points.' -ForegroundColor DarkGray
     Write-Host ''
 }
@@ -214,7 +214,7 @@ while ($true) {
         '^help$' { Show-Help; continue }
         '^task$' { Show-Task; continue }
         '^mission$' {
-            Write-Host '  Tool drill — learn commands for the CyberPatriot Phase 2 race.'
+            Write-Host '  Tool drill - learn commands for the CyberPatriot Phase 2 race.'
             continue
         }
         '^hint$' {
