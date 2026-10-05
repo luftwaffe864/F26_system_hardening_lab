@@ -14,6 +14,8 @@
 
 hardening_lab:
   files_root: /srv/salt/F26_system_hardening_lab
+  # Windows minions get a native path (Unix /srv/salt + file_mode breaks Salt on Windows)
+  files_root_windows: 'C:\HardeningLab\src'
   scoreboard_url: http://172.31.31.2:8080
   secret: dcig-hardening-2026
   student_password: Hardening2026!

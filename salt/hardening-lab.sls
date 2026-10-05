@@ -6,7 +6,12 @@
  # Homelab: ubuntu01 + win19_srv01 with the same grains.
  #}
 {% set role = salt['grains.get']('role', '') %}
+{% set is_windows = salt['grains.get']('os') == 'Windows' or salt['grains.get']('kernel') == 'Windows' %}
+{% if is_windows %}
+{% set files_root = salt['pillar.get']('hardening_lab:files_root_windows', 'C:\\HardeningLab\\src') %}
+{% else %}
 {% set files_root = salt['pillar.get']('hardening_lab:files_root', '/srv/salt/F26_system_hardening_lab') %}
+{% endif %}
 {% set scoreboard_url = salt['pillar.get']('hardening_lab:scoreboard_url', 'http://172.31.31.2:8080') %}
 {% set secret = salt['pillar.get']('hardening_lab:secret', 'dcig-hardening-2026') %}
 {% set student_pw = salt['pillar.get']('hardening_lab:student_password', 'Hardening2026!') %}
@@ -16,8 +21,11 @@ hardening-lab-files:
     - name: {{ files_root }}
     - source: salt://F26_system_hardening_lab
     - clean: False
+{# Unix modes break Salt file.recurse on Windows ("mode management is not supported") #}
+{% if not is_windows %}
     - dir_mode: 755
     - file_mode: 755
+{% endif %}
 
 {% if role == 'hardening-linux' %}
 hardening-lab-linux-phase1:
@@ -34,7 +42,7 @@ hardening-lab-linux-phase1:
 hardening-lab-windows-phase1:
   cmd.run:
     - name: >
-        powershell.exe -ExecutionPolicy Bypass -File {{ files_root }}\windows\setup_phase1.ps1
+        powershell.exe -ExecutionPolicy Bypass -File "{{ files_root }}\windows\setup_phase1.ps1"
         -ScoreboardUrl '{{ scoreboard_url }}'
         -Secret '{{ secret }}'
         -StudentPassword '{{ student_pw }}'

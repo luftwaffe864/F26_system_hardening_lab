@@ -55,6 +55,14 @@ sudo salt -G 'role:hardening-windows' state.apply hardening-lab
 
 That runs `linux/setup_phase1.sh` / `windows/setup_phase1.ps1` (plants + quest install + **auto Phase-2 hooks**). When a student finishes the quest, Phase-2 prep starts by itself — they never run `prepare_phase2` manually.
 
+After pulling state updates on the master, re-copy the state file:
+
+```bash
+sudo cp /srv/salt/F26_system_hardening_lab/salt/hardening-lab.sls /srv/salt/hardening-lab.sls
+```
+
+Windows note: Salt `file.recurse` must **not** set Unix `file_mode`/`dir_mode` on Windows minions (error: *mode management is not supported on Windows*). Lab files land under `C:\HardeningLab\src` on Windows.
+
 5. Start scoreboard on the mentor host (often the Salt master at `172.31.31.2`) — [`scoreboard/`](scoreboard/) or [`homelab/start_scoreboard.sh`](homelab/start_scoreboard.sh).
 6. Students play quests on **`.10` then `.11`**, then mentors open Phase 2:
 
