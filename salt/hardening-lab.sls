@@ -1,6 +1,6 @@
 {# DCIG System Hardening — apply Phase 1 by grain `role`
  #   hardening-linux   → dcig-syslab-teamNN-ubuntu @ 192.168.1.10
- #   hardening-windows → dcig-syslab-teamNN-win19 @ 192.168.1.11
+ #   hardening-windows → win19_srvNN @ 192.168.1.11
  #   (jumpbox .18 — no lab grain)
  #
  # Homelab: ubuntu01 + win19_srv01 with the same grains.

@@ -1,8 +1,11 @@
 #!/usr/bin/env bash
 # Shared team ID + peer hostname helpers (cyber range + homelab).
 #
-# Cyber range: dcig-syslab-team07-ubuntu, dcig-syslab-team07-win19, …
-# Homelab:     ubuntu07, win19_srv07 (trailing digits)
+# Cyber range Salt minion IDs / hostnames:
+#   dcig-syslab-team07-ubuntu   Linux target
+#   win19_srv07                 Windows target
+#   team07-jump                 jumpbox (access only)
+# Homelab: ubuntu07, win19_srv07 (trailing digits)
 
 team_from_hostname() {
   local h="${1:-$(hostname -s 2>/dev/null || hostname)}"
@@ -23,10 +26,6 @@ team_from_hostname() {
 # Windows box name for handoff text (after Linux quest).
 windows_peer_hostname() {
   local team="${1:-00}"
-  local h="${2:-$(hostname -s 2>/dev/null || hostname)}"
-  if printf '%s' "$h" | grep -qiE 'team[0-9]+|dcig-syslab'; then
-    printf 'dcig-syslab-team%s-win19' "$team"
-  else
-    printf 'win19_srv%s' "$team"
-  fi
+  # Range + homelab both use win19_srvNN for the Windows target.
+  printf 'win19_srv%s' "$team"
 }

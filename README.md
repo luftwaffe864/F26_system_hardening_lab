@@ -4,11 +4,11 @@ Guided quests on **Linux then Windows**, then a CyberPatriot-style **Phase 2** f
 
 Each student gets a paired box set on an **isolated `192.168.1.0/24`** (range ops pre-configure subnet and IPs):
 
-| Role | Hostname pattern | IP (in each pod) |
-|------|------------------|------------------|
+| Role | Salt minion ID (range) | IP (in each pod) |
+|------|------------------------|------------------|
 | Linux target | `dcig-syslab-teamNN-ubuntu` | **`192.168.1.10`** |
-| Windows target | `dcig-syslab-teamNN-win19` | **`192.168.1.11`** |
-| Ubuntu jumpbox | `dcig-syslab-teamNN-ubuntu-jumpbox` | **`192.168.1.18`** |
+| Windows target | `win19_srvNN` | **`192.168.1.11`** |
+| Jumpbox | `teamNN-jump` | **`192.168.1.18`** |
 
 **Team NN** = digits after `team` in the hostname (e.g. `team07` → Team 07). Homelab may still use `ubuntu01` / `win19_srv01` (trailing digits).
 

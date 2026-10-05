@@ -5,8 +5,8 @@
 #
 # Student pod (per team NN), networking pre-built by range ops:
 #   dcig-syslab-teamNN-ubuntu          192.168.1.10   grain: role=hardening-linux
-#   dcig-syslab-teamNN-win19           192.168.1.11   grain: role=hardening-windows
-#   dcig-syslab-teamNN-ubuntu-jumpbox  192.168.1.18   (access only — no lab grain)
+#   win19_srvNN                        192.168.1.11   grain: role=hardening-windows
+#   teamNN-jump                        192.168.1.18   (access only — no lab grain)
 #
 # Minion grains on targets:
 #   role: hardening-linux

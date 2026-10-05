@@ -1,7 +1,7 @@
 <#
 ================================================================================
  DCIG System Hardening — Windows Phase 1 setup
- Run elevated on dcig-syslab-teamNN-win19 (or homelab win19_srvNN):
+ Run elevated on win19_srvNN (range or homelab):
 
    powershell.exe -ExecutionPolicy Bypass -File .\setup_phase1.ps1
 

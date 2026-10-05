@@ -16,6 +16,10 @@ function Get-LinuxPeerHostname {
         [string]$TeamId,
         [string]$LocalHostname = $env:COMPUTERNAME
     )
+    # Range Linux target naming (Windows minion is win19_srvNN).
+    if ($LocalHostname -match '(?i)^win19_srv\d+$' -or $LocalHostname -match '(?i)team\d+-jump') {
+        return "dcig-syslab-team$TeamId-ubuntu"
+    }
     if ($LocalHostname -match '(?i)team\d+|dcig-syslab') {
         return "dcig-syslab-team$TeamId-ubuntu"
     }

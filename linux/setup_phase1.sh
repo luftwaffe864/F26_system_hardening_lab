@@ -154,7 +154,7 @@ Team: $(team_from_host)
 
 Someone left this workstation messy. Your job in the quest is to find the attack
 surface and harden what you can. When you finish, go to your matching Windows box and continue there
-(e.g. dcig-syslab-teamNN-win19 on the range, or win19_srvNN in homelab).
+(e.g. win19_srvNN on the range — same minion ID as Salt).
 
 Password reuse note found on sticky pad: tempadmin also uses Password1 on email.
 
