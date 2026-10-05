@@ -13,7 +13,7 @@ End-to-end guide for a **VMware homelab** only. On the **cyber range**, networki
 | Windows Server 2019 (Desktop Experience) | Windows hardening target | `win19_srv01` | `192.168.1.11` |
 | VMware NAT gateway | Internet for the VMs | — | `192.168.1.1` |
 
-Production pods use **[RANGE.md](RANGE.md)** (`192.168.1.10` / `.11` / `.18`, hostnames `dcig-syslab-teamNN-*`, Salt master `172.31.31.3`). Homelab VMware NAT may use a **different subnet** — keep the same **last octets** (`.7` mentor Kali, `.10` Linux, `.11` Windows) when possible, or override `--gateway` in section [2](#2-vmware-networking).
+Production pods use **[RANGE.md](RANGE.md)** (`192.168.1.10` / `.11` / `.18`, hostnames `dcig-syslab-teamNN-*`, Salt master `172.31.31.2`). Homelab VMware NAT may use a **different subnet** — keep the same **last octets** (`.7` mentor Kali, `.10` Linux, `.11` Windows) when possible, or override `--gateway` in section [2](#2-vmware-networking).
 
 **Team ID:** on the range, digits after `team` in the hostname; in homelab, trailing digits (`ubuntu01` + `win19_srv01` → **Team 01**). See [`scripts/team_id.sh`](scripts/team_id.sh).
 

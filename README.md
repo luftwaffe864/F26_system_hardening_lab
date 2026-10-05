@@ -12,7 +12,7 @@ Each student gets a paired box set on an **isolated `192.168.1.0/24`** (range op
 
 **Team NN** = digits after `team` in the hostname (e.g. `team07` → Team 07). Homelab may still use `ubuntu01` / `win19_srv01` (trailing digits).
 
-**Mentors:** Salt master **`172.31.31.3`** + scoreboard. Push lab with Salt — **do not** re-IP student VMs. Students: **jumpbox** → SSH Linux / RDP Windows. See **[RANGE.md](RANGE.md)**.
+**Mentors:** Salt master **`172.31.31.2`** + scoreboard. Push lab with Salt — **do not** re-IP student VMs. Students: **jumpbox** → SSH Linux / RDP Windows. See **[RANGE.md](RANGE.md)**.
 
 ## Student flow
 

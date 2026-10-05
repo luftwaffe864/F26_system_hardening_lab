@@ -21,8 +21,8 @@ Replace **`NN`** with the team number (e.g. `01`, `07`, `30`).
 
 | Role | Address | Notes |
 |------|---------|--------|
-| Salt master | **`172.31.31.3`** | Deploy lab from `/srv/salt/F26_system_hardening_lab` |
-| Scoreboard | **`http://172.31.31.3:8080`** (typical) | Set `hardening_lab:scoreboard_url` in pillar; must be reachable from **`.10` / `.11`** (and jumpbox if you put a shortcut there) |
+| Salt master | **`172.31.31.2`** | Deploy lab from `/srv/salt/F26_system_hardening_lab` |
+| Scoreboard | **`http://172.31.31.2:8080`** (typical) | Set `hardening_lab:scoreboard_url` in pillar; must be reachable from **`.10` / `.11`** (and jumpbox if you put a shortcut there) |
 
 Do **not** run [`homelab/setup_*.sh`](homelab/) or [`homelab/setup_windows.ps1`](homelab/setup_windows.ps1) on range student VMs — those scripts are for **VMware homelab** networking only.
 
@@ -44,11 +44,11 @@ sudo salt -G 'role:hardening-windows' state.apply hardening-lab
 
 That runs `linux/setup_phase1.sh` / `windows/setup_phase1.ps1` (plants + quest install + **auto Phase-2 hooks**). When a student finishes the quest, Phase-2 prep starts by itself — they never run `prepare_phase2` manually.
 
-5. Start scoreboard on the mentor host (often the Salt master at `172.31.31.3`) — [`scoreboard/`](scoreboard/) or [`homelab/start_scoreboard.sh`](homelab/start_scoreboard.sh).
+5. Start scoreboard on the mentor host (often the Salt master at `172.31.31.2`) — [`scoreboard/`](scoreboard/) or [`homelab/start_scoreboard.sh`](homelab/start_scoreboard.sh).
 6. Students play quests on **`.10` then `.11`**, then mentors open Phase 2:
 
 ```bash
-curl -X POST "http://172.31.31.3:8080/api/admin/open" \
+curl -X POST "http://172.31.31.2:8080/api/admin/open" \
   -H 'Content-Type: application/json' \
   -d '{"admin":"dcig-admin-2026"}'
 ```
@@ -61,7 +61,7 @@ From the Linux target (`.10`):
 hostname -s          # dcig-syslab-teamNN-ubuntu
 ip -br addr          # 192.168.1.10 on the lab NIC
 cat /etc/hardening-lab/team   # NN zero-padded
-curl -sS -m 3 http://172.31.31.3:8080/api/status
+curl -sS -m 3 http://172.31.31.2:8080/api/status
 ```
 
 From Windows (`.11`): `hostname`, RDP from jumpbox, quest as `student` after Phase-1.
@@ -76,8 +76,8 @@ From jumpbox (`.18`): `ping -c1 192.168.1.10`, `ping -c1 192.168.1.11`.
 | Linux target | `192.168.1.10` |
 | Windows target | `192.168.1.11` |
 | Ubuntu jumpbox | `192.168.1.18` |
-| Salt master | `172.31.31.3` |
-| Scoreboard (pillar example) | `http://172.31.31.3:8080` |
+| Salt master | `172.31.31.2` |
+| Scoreboard (pillar example) | `http://172.31.31.2:8080` |
 
 ## Homelab
 
