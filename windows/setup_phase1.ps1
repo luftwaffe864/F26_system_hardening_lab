@@ -1,6 +1,6 @@
 <#
 ================================================================================
- DCIG System Hardening — Windows Phase 1 setup
+ DCIG System Hardening - Windows Phase 1 setup
  Run elevated on win19_srvNN (range or homelab):
 
    powershell.exe -ExecutionPolicy Bypass -File .\setup_phase1.ps1
@@ -47,7 +47,7 @@ function Assert-Admin {
 }
 
 # Lab plants intentionally weak passwords (Password1, guest). Range GPO/local policy
-# often blocks that — relax local password policy before creating accounts.
+# often blocks that - relax local password policy before creating accounts.
 function Enable-LabWeakPasswords {
     try {
         net accounts /minpwlen:0 /maxpwage:unlimited /uniquepw:0 | Out-Null
@@ -169,7 +169,7 @@ if (Test-Path $scSrc) {
     Copy-Item $scSrc (Join-Path $LabRoot 'Make-ScoreboardShortcut.ps1') -Force
 }
 
-# student account (avoid UserMayNotChangePassword — missing on some Server 2019 builds)
+# student account (avoid UserMayNotChangePassword - missing on some Server 2019 builds)
 $sec = ConvertTo-SecureString $StudentPassword -AsPlainText -Force
 if (-not (Get-LocalUser -Name 'student' -EA SilentlyContinue)) {
     New-LocalUser -Name 'student' -Password $sec -FullName 'DCIG Student' `
@@ -183,7 +183,7 @@ cmd /c "net user student /passwordchg:no" | Out-Null
 Add-LocalGroupMember -Group 'Administrators' -Member 'student' -EA SilentlyContinue
 Say 'student account ready (Administrators; password reset by lab if changed)'
 
-# bad admin + unused user (weak passwords — policy relaxed above)
+# bad admin + unused user (weak passwords - policy relaxed above)
 foreach ($u in @(
     @{ Name='tempadmin'; Pass='Password1'; Fallback='Password1!Aa'; Full='Temp Admin - REMOVE'; Admin=$true },
     @{ Name='guestuser'; Pass='guest';     Fallback='GuestUser1!';  Full='Unused guest';        Admin=$false }
@@ -197,21 +197,21 @@ Say 'planted tempadmin + guestuser (best-effort)'
 
 # briefing
 $brief = @"
-DCIG System Hardening — Windows box
+DCIG System Hardening - Windows box
 Hostname: $env:COMPUTERNAME
 Team: $Team
 
 You should have finished the Linux quest first. Harden this Windows box the same way:
 map the attack surface, then fix users, startup, firewall, and Defender.
 
-Sticky note: tempadmin password is Password1 (reused elsewhere — don't do that).
+Sticky note: tempadmin password is Password1 (reused elsewhere - don't do that).
 
 Lab note: RDP stays enabled (port 3389). Do not rename or delete the student account.
 "@
 Set-Content -Path (Join-Path $LabRoot 'briefing.txt') -Value $brief -Encoding ASCII
 
 # fake bloat
-Set-Content -Path (Join-Path $Bloat 'PCOptimizer.exe.txt') -Value 'Fake bloatware placeholder — delete this folder.' -Encoding ASCII
+Set-Content -Path (Join-Path $Bloat 'PCOptimizer.exe.txt') -Value 'Fake bloatware placeholder - delete this folder.' -Encoding ASCII
 New-Item -ItemType Directory -Force -Path (Join-Path $Bloat 'Plugins') | Out-Null
 
 # rogue binary + run key (harmless loop via powershell copy)
@@ -226,7 +226,7 @@ Start-Sleep -Milliseconds 500
 try {
     Copy-Item "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" $rogueExe -Force
 } catch {
-    # Still locked — rename aside and copy fresh
+    # Still locked - rename aside and copy fresh
     Remove-Item "$rogueExe.bak" -Force -EA SilentlyContinue
     if (Test-Path $rogueExe) {
         Rename-Item $rogueExe "$rogueExe.bak" -Force -EA SilentlyContinue
@@ -247,7 +247,7 @@ New-NetFirewallRule -DisplayName 'Remote Admin Support' -Direction Inbound `
     -Action Allow -Protocol TCP -LocalPort 5555 -Profile Any -EA SilentlyContinue | Out-Null
 Say 'planted firewall rule Remote Admin Support (TCP 5555)'
 
-# Defender real-time off (best effort — may be managed)
+# Defender real-time off (best effort - may be managed)
 try {
     Set-MpPreference -DisableRealtimeMonitoring $true -EA Stop
     Say 'disabled Defender real-time monitoring (lab)'
@@ -319,7 +319,7 @@ try {
 }
 Say 'installed HardeningPreparePhase2 on-demand task'
 
-# Access safety net (RDP + student login) — every 3 minutes as SYSTEM
+# Access safety net (RDP + student login) - every 3 minutes as SYSTEM
 $ensurePs1 = Join-Path $LabRoot 'Ensure-LabAccess.ps1'
 if (Test-Path $ensurePs1) {
     $ensureCmd = "powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"$ensurePs1`""

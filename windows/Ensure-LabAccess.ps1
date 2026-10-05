@@ -1,6 +1,6 @@
 <#
 ================================================================================
- DCIG lab safety net — keep RDP + student login working during hardening.
+ DCIG lab safety net - keep RDP + student login working during hardening.
  Run as SYSTEM (scheduled task). Re-applies access rules; does not remove scored plants.
 ================================================================================
 #>
@@ -32,13 +32,13 @@ Set-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server' 
     -Name 'fDenyTSConnections' -Value 0 -Force | Out-Null
 Enable-NetFirewallRule -DisplayGroup 'Remote Desktop' -EA SilentlyContinue | Out-Null
 
-# Dedicated rule (re-created if deleted) — separate from scored "bad" rules
+# Dedicated rule (re-created if deleted) - separate from scored "bad" rules
 $rdpName = 'DCIG Lab RDP Access'
 $existing = Get-NetFirewallRule -DisplayName $rdpName -EA SilentlyContinue
 if (-not $existing) {
     New-NetFirewallRule -DisplayName $rdpName -Direction Inbound -Action Allow `
         -Protocol TCP -LocalPort 3389 -Profile Any `
-        -Description 'DCIG range — do not remove; keeps student RDP working' | Out-Null
+        -Description 'DCIG range - do not remove; keeps student RDP working' | Out-Null
 } else {
     Enable-NetFirewallRule -DisplayName $rdpName -EA SilentlyContinue | Out-Null
     Set-NetFirewallRule -DisplayName $rdpName -Enabled True -Action Allow -EA SilentlyContinue | Out-Null

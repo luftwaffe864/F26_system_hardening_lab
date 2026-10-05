@@ -1,7 +1,7 @@
 <#
 ================================================================================
- DCIG System Hardening — Windows score agent (Phase 2)
- Machine-state checks only — Windows-native findings (not a Linux mirror).
+ DCIG System Hardening - Windows score agent (Phase 2)
+ Machine-state checks only - Windows-native findings (not a Linux mirror).
 ================================================================================
 #>
 $ErrorActionPreference = 'SilentlyContinue'
@@ -129,7 +129,7 @@ $allowUnenc = $null
 try { $allowUnenc = (Get-Item -Path WSMan:\localhost\Service\AllowUnencrypted -EA SilentlyContinue).Value } catch {}
 if ($null -eq $allowUnenc) {
     # If WinRM path unavailable, treat as fixed only when we cannot read true (avoid free points)
-    # Fall through — no auto-award
+    # Fall through - no auto-award
 } elseif (-not $allowUnenc -or $allowUnenc -eq $false -or "$allowUnenc" -eq 'false') {
     Post-Finding 'W2-16' 15
 }

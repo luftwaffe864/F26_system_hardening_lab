@@ -1,6 +1,6 @@
 <#
 ================================================================================
- DCIG System Hardening — Windows Phase 2 prepare
+ DCIG System Hardening - Windows Phase 2 prepare
  Auto-run after Windows quest. Plants Windows-native findings (not a Linux mirror).
 ================================================================================
 #>
@@ -94,7 +94,7 @@ New-ItemProperty -Path $ifeo -Name 'Debugger' -Value 'C:\Windows\System32\cmd.ex
 # W2-10 open SMB share with Everyone Full Control
 New-Item -ItemType Directory -Force -Path $ShareRoot | Out-Null
 New-Item -ItemType Directory -Force -Path (Join-Path $ShareRoot 'TeamDrop') | Out-Null
-Set-Content (Join-Path $ShareRoot 'TeamDrop\readme.txt') -Value 'Lab drop share — lock this down' -Encoding ASCII
+Set-Content (Join-Path $ShareRoot 'TeamDrop\readme.txt') -Value 'Lab drop share - lock this down' -Encoding ASCII
 try { Remove-SmbShare -Name 'TeamDrop' -Force -EA SilentlyContinue } catch {}
 New-SmbShare -Name 'TeamDrop' -Path (Join-Path $ShareRoot 'TeamDrop') -FullAccess 'Everyone' -EA SilentlyContinue | Out-Null
 
@@ -103,7 +103,7 @@ New-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies
     -Name 'EnableLUA' -Value 0 -PropertyType DWord -Force | Out-Null
 
 # ========== MEDIUM ==========
-# W2-01 excess admin (contractor — not the Linux sysmaint/helpdesk names)
+# W2-01 excess admin (contractor - not the Linux sysmaint/helpdesk names)
 $cPass = ConvertTo-SecureString 'Contract2026!' -AsPlainText -Force
 if (-not (Get-LocalUser -Name 'contractor' -EA SilentlyContinue)) {
     New-LocalUser -Name 'contractor' -Password $cPass -FullName 'Outside Contractor' -PasswordNeverExpires | Out-Null
@@ -176,7 +176,7 @@ cmd /c "sc.exe stop VendorUpd >nul 2>&1"
 cmd /c "sc.exe delete VendorUpd >nul 2>&1"
 cmd /c 'sc.exe create VendorUpd binPath= C:\Program Files\Vendor Update\update.exe start= demand DisplayName= VendorUpdateHelper >nul 2>&1'
 
-# W2-18 unauthorized auto-start service (Windows service abuse — not Linux systemd mirror name)
+# W2-18 unauthorized auto-start service (Windows service abuse - not Linux systemd mirror name)
 $svcDir = 'C:\ProgramData\PrintNotifyHelper'
 New-Item -ItemType Directory -Force -Path $svcDir | Out-Null
 $svcPs1 = Join-Path $svcDir 'run.ps1'
@@ -219,7 +219,7 @@ try {
 Phase 2 is ready on this Windows box (Team $Team).
 
 CyberPatriot-style scoring: fix the MACHINE. The score agent checks system
-state about once a minute — you do NOT type answers into a prompt.
+state about once a minute - you do NOT type answers into a prompt.
 
 Windows-focused categories (easy → hard):
   - Built-in / leftover local accounts
@@ -235,7 +235,7 @@ Windows-focused categories (easy → hard):
   - WinRM encryption settings
   - Unquoted service paths and unexpected services
 
-These are NOT the same plants as the Linux box — hunt Windows artifacts.
+These are NOT the same plants as the Linux box - hunt Windows artifacts.
 
 Keep RDP working: port 3389 stays allowed. Do not rename or delete the student account.
 
