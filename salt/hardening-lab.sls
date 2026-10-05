@@ -21,6 +21,10 @@ hardening-lab-files:
     - name: {{ files_root }}
     - source: salt://F26_system_hardening_lab
     - clean: False
+    - exclude_pat:
+      - .git*
+      - '*.pyc'
+      - ANSWER_KEY*
 {# Unix modes break Salt file.recurse on Windows ("mode management is not supported") #}
 {% if not is_windows %}
     - dir_mode: 755

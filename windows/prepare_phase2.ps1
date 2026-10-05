@@ -38,6 +38,28 @@ $ScoreboardUrl = if (Test-Path (Join-Path $Cfg 'scoreboard_url.txt')) {
 
 Say "preparing Phase 2 findings (Windows-native, easy→hard) for Team $Team"
 
+# Ensure plant accounts can be created if local policy is strict
+try {
+    net accounts /minpwlen:0 /maxpwage:unlimited /uniquepw:0 | Out-Null
+    $inf = Join-Path $env:TEMP 'dcig_lab_secpol_p2.inf'
+    $db  = Join-Path $env:TEMP 'dcig_lab_secpol_p2.sdb'
+    @"
+[Unicode]
+Unicode=yes
+[System Access]
+MinimumPasswordLength = 0
+PasswordComplexity = 0
+MinimumPasswordAge = 0
+MaximumPasswordAge = -1
+PasswordHistorySize = 0
+[Version]
+signature="`$CHICAGO`$"
+Revision=1
+"@ | Set-Content -Path $inf -Encoding Unicode
+    Start-Process -FilePath 'secedit.exe' -ArgumentList "/configure /db `"$db`" /cfg `"$inf`" /areas SECURITYPOLICY" `
+        -Wait -WindowStyle Hidden | Out-Null
+} catch {}
+
 Remove-Item (Join-Path $env:LOCALAPPDATA 'HardeningQuest') -Recurse -Force -EA SilentlyContinue
 
 # Clear Phase-1 leftovers

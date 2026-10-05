@@ -39,6 +39,68 @@ function Assert-Admin {
     }
 }
 
+# Lab plants intentionally weak passwords (Password1, guest). Range GPO/local policy
+# often blocks that — relax local password policy before creating accounts.
+function Enable-LabWeakPasswords {
+    try {
+        net accounts /minpwlen:0 /maxpwage:unlimited /uniquepw:0 | Out-Null
+    } catch {}
+    $inf = Join-Path $env:TEMP 'dcig_lab_secpol.inf'
+    $db  = Join-Path $env:TEMP 'dcig_lab_secpol.sdb'
+    $log = Join-Path $env:TEMP 'dcig_lab_secpol.log'
+    @"
+[Unicode]
+Unicode=yes
+[System Access]
+MinimumPasswordLength = 0
+PasswordComplexity = 0
+MinimumPasswordAge = 0
+MaximumPasswordAge = -1
+PasswordHistorySize = 0
+[Version]
+signature="`$CHICAGO`$"
+Revision=1
+"@ | Set-Content -Path $inf -Encoding Unicode
+    $p = Start-Process -FilePath 'secedit.exe' -ArgumentList "/configure /db `"$db`" /cfg `"$inf`" /areas SECURITYPOLICY /log `"$log`"" `
+        -Wait -PassThru -WindowStyle Hidden
+    if ($p.ExitCode -ne 0) {
+        Warn "secedit password-policy relax returned exit $($p.ExitCode) (domain GPO may still block weak passwords)"
+    } else {
+        Say 'relaxed local password policy (complexity off) for lab plant accounts'
+    }
+}
+
+function New-LabLocalUser {
+    param(
+        [string]$Name,
+        [string]$Password,
+        [string]$FullName,
+        [string]$FallbackPassword
+    )
+    $tries = @($Password)
+    if ($FallbackPassword -and $FallbackPassword -ne $Password) { $tries += $FallbackPassword }
+    foreach ($pw in $tries) {
+        $p = ConvertTo-SecureString $pw -AsPlainText -Force
+        try {
+            if (-not (Get-LocalUser -Name $Name -EA SilentlyContinue)) {
+                New-LocalUser -Name $Name -Password $p -FullName $FullName -PasswordNeverExpires | Out-Null
+            } else {
+                Set-LocalUser -Name $Name -Password $p -FullName $FullName -PasswordNeverExpires $true | Out-Null
+            }
+            if ($pw -ne $Password) {
+                Warn "account $Name created with fallback password (policy blocked '$Password')"
+            }
+            return $true
+        } catch {
+            if ($pw -eq $tries[-1]) {
+                Warn "could not create/update $Name : $($_.Exception.Message)"
+                return $false
+            }
+        }
+    }
+    return $false
+}
+
 $TeamIdScript = Join-Path (Split-Path -Parent $MyInvocation.MyCommand.Path) '..\scripts\TeamId.ps1'
 if (Test-Path $TeamIdScript) { . $TeamIdScript }
 
@@ -71,6 +133,7 @@ if ($Uninstall) {
 }
 
 Step "Phase 1 setup on $env:COMPUTERNAME (Team $Team)"
+Enable-LabWeakPasswords
 
 # dirs + config
 New-Item -ItemType Directory -Force -Path $Cfg, $Rogue, $Bloat, (Join-Path $LabRoot 'bin') | Out-Null
@@ -112,21 +175,17 @@ Enable-LocalUser -Name 'student' -EA SilentlyContinue | Out-Null
 Add-LocalGroupMember -Group 'Administrators' -Member 'student' -EA SilentlyContinue
 Say 'student account ready (Administrators; password reset by lab if changed)'
 
-# bad admin + unused user
+# bad admin + unused user (weak passwords — policy relaxed above)
 foreach ($u in @(
-    @{ Name='tempadmin'; Pass='Password1'; Full='Temp Admin - REMOVE'; Admin=$true },
-    @{ Name='guestuser'; Pass='guest';     Full='Unused guest';        Admin=$false }
+    @{ Name='tempadmin'; Pass='Password1'; Fallback='Password1!Aa'; Full='Temp Admin - REMOVE'; Admin=$true },
+    @{ Name='guestuser'; Pass='guest';     Fallback='GuestUser1!';  Full='Unused guest';        Admin=$false }
 )) {
-    $p = ConvertTo-SecureString $u.Pass -AsPlainText -Force
-    if (-not (Get-LocalUser -Name $u.Name -EA SilentlyContinue)) {
-        New-LocalUser -Name $u.Name -Password $p -FullName $u.Full -PasswordNeverExpires | Out-Null
-    } else {
-        Set-LocalUser -Name $u.Name -Password $p -FullName $u.Full
+    if (New-LabLocalUser -Name $u.Name -Password $u.Pass -FullName $u.Full -FallbackPassword $u.Fallback) {
+        if ($u.Admin) { Add-LocalGroupMember -Group 'Administrators' -Member $u.Name -EA SilentlyContinue }
+        else { Add-LocalGroupMember -Group 'Users' -Member $u.Name -EA SilentlyContinue }
     }
-    if ($u.Admin) { Add-LocalGroupMember -Group 'Administrators' -Member $u.Name -EA SilentlyContinue }
-    else { Add-LocalGroupMember -Group 'Users' -Member $u.Name -EA SilentlyContinue }
 }
-Say 'planted tempadmin + guestuser'
+Say 'planted tempadmin + guestuser (best-effort)'
 
 # briefing
 $brief = @"
