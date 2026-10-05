@@ -31,6 +31,13 @@ function Warn($m) { Write-Host "[!] $m" -ForegroundColor Yellow }
 function Fail($m) { Write-Host "[x] $m" -ForegroundColor Red }
 function Step($m) { Write-Host "`n=== $m ===" -ForegroundColor Cyan }
 
+# schtasks writes to stderr when a task is missing; with $ErrorActionPreference=Stop that aborts the script.
+function Invoke-SchtasksQuiet {
+    param([Parameter(Mandatory)][string]$ArgumentList)
+    cmd.exe /c "schtasks $ArgumentList >nul 2>&1" | Out-Null
+    return $LASTEXITCODE
+}
+
 function Assert-Admin {
     $id = [Security.Principal.WindowsIdentity]::GetCurrent()
     $pr = New-Object Security.Principal.WindowsPrincipal($id)
@@ -275,19 +282,17 @@ try {
 Set-Content -Path (Join-Path $LabRoot 'bin\phase2_watch.ps1') -Value $watch -Encoding ASCII
 
 $watchCmd = "powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"$LabRoot\bin\phase2_watch.ps1`""
-schtasks /Delete /TN 'HardeningPhase2Watch' /F 2>$null | Out-Null
+Invoke-SchtasksQuiet "/Delete /TN HardeningPhase2Watch /F"
 # Every minute is fine; quest also tries HardeningPreparePhase2 /Run immediately
-schtasks /Create /TN 'HardeningPhase2Watch' /SC MINUTE /MO 1 /RU SYSTEM /RL HIGHEST `
-    /TR $watchCmd /F | Out-Null
+Invoke-SchtasksQuiet "/Create /TN HardeningPhase2Watch /SC MINUTE /MO 1 /RU SYSTEM /RL HIGHEST /TR `"$watchCmd`" /F"
 # Kick once now so the task engine is awake
-schtasks /Run /TN 'HardeningPhase2Watch' 2>$null | Out-Null
+Invoke-SchtasksQuiet "/Run /TN HardeningPhase2Watch"
 Say 'installed SYSTEM watcher HardeningPhase2Watch (auto Phase-2 after quest)'
 
 # Also an on-demand SYSTEM task the quest can kick immediately (no UAC for student)
 $prepCmd = "powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"$LabRoot\prepare_phase2.ps1`""
-schtasks /Delete /TN 'HardeningPreparePhase2' /F 2>$null | Out-Null
-schtasks /Create /TN 'HardeningPreparePhase2' /SC ONCE /ST 00:00 /SD 01/01/2099 /RU SYSTEM /RL HIGHEST `
-    /TR $prepCmd /F | Out-Null
+Invoke-SchtasksQuiet "/Delete /TN HardeningPreparePhase2 /F"
+Invoke-SchtasksQuiet "/Create /TN HardeningPreparePhase2 /SC ONCE /ST 00:00 /SD 01/01/2099 /RU SYSTEM /RL HIGHEST /TR `"$prepCmd`" /F"
 # Allow Authenticated Users to run this task on demand (quest Finish-Quest)
 try {
     $svc = New-Object -ComObject 'Schedule.Service'
@@ -306,10 +311,9 @@ Say 'installed HardeningPreparePhase2 on-demand task'
 $ensurePs1 = Join-Path $LabRoot 'Ensure-LabAccess.ps1'
 if (Test-Path $ensurePs1) {
     $ensureCmd = "powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"$ensurePs1`""
-    schtasks /Delete /TN 'DCIGEnsureLabAccess' /F 2>$null | Out-Null
-    schtasks /Create /TN 'DCIGEnsureLabAccess' /SC MINUTE /MO 3 /RU SYSTEM /RL HIGHEST `
-        /TR $ensureCmd /F | Out-Null
-    schtasks /Run /TN 'DCIGEnsureLabAccess' 2>$null | Out-Null
+    Invoke-SchtasksQuiet "/Delete /TN DCIGEnsureLabAccess /F"
+    Invoke-SchtasksQuiet "/Create /TN DCIGEnsureLabAccess /SC MINUTE /MO 3 /RU SYSTEM /RL HIGHEST /TR `"$ensureCmd`" /F"
+    Invoke-SchtasksQuiet "/Run /TN DCIGEnsureLabAccess"
     Say 'installed DCIGEnsureLabAccess (RDP + student safety net every 3 min)'
 }
 

@@ -202,8 +202,7 @@ if (-not (Test-Path $agent)) {
     $agent = Join-Path (Split-Path -Parent $MyInvocation.MyCommand.Path) 'score_agent.ps1'
     Copy-Item $agent (Join-Path $LabRoot 'score_agent.ps1') -Force -EA SilentlyContinue
 }
-schtasks /Create /TN 'HardeningScoreAgent' /SC MINUTE /MO 1 /RU SYSTEM `
-    /TR "powershell.exe -NoProfile -ExecutionPolicy Bypass -File C:\HardeningLab\score_agent.ps1" /F | Out-Null
+cmd.exe /c "schtasks /Create /TN HardeningScoreAgent /SC MINUTE /MO 1 /RU SYSTEM /TR `"powershell.exe -NoProfile -ExecutionPolicy Bypass -File C:\HardeningLab\score_agent.ps1`" /F >nul 2>&1" | Out-Null
 
 $sigMsg = "ready|$Team|windows"
 $hmac = New-Object System.Security.Cryptography.HMACSHA256
