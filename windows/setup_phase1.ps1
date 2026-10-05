@@ -162,16 +162,17 @@ if (Test-Path $scSrc) {
     Copy-Item $scSrc (Join-Path $LabRoot 'Make-ScoreboardShortcut.ps1') -Force
 }
 
-# student account
+# student account (avoid UserMayNotChangePassword — missing on some Server 2019 builds)
 $sec = ConvertTo-SecureString $StudentPassword -AsPlainText -Force
 if (-not (Get-LocalUser -Name 'student' -EA SilentlyContinue)) {
     New-LocalUser -Name 'student' -Password $sec -FullName 'DCIG Student' `
-        -PasswordNeverExpires -UserMayNotChangePassword | Out-Null
+        -PasswordNeverExpires | Out-Null
 } else {
-    Set-LocalUser -Name 'student' -Password $sec -PasswordNeverExpires $true `
-        -UserMayNotChangePassword $true -AccountNeverExpires | Out-Null
+    Set-LocalUser -Name 'student' -Password $sec -PasswordNeverExpires $true | Out-Null
 }
 Enable-LocalUser -Name 'student' -EA SilentlyContinue | Out-Null
+# Prefer net.exe for "user cannot change password" (works on Server 2019)
+cmd /c "net user student /passwordchg:no" | Out-Null
 Add-LocalGroupMember -Group 'Administrators' -Member 'student' -EA SilentlyContinue
 Say 'student account ready (Administrators; password reset by lab if changed)'
 
