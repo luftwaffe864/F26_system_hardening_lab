@@ -9,6 +9,24 @@
 [CmdletBinding()]
 param()
 
+# HKLM Run keys, firewall, and Defender need a real admin token (UAC).
+# Re-launch elevated once so Desktop double-click works after a single Yes.
+$principal = [Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()
+if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+    $self = if ($PSCommandPath) { $PSCommandPath } else { $MyInvocation.MyCommand.Path }
+    $argList = "-NoProfile -ExecutionPolicy Bypass -NoExit -File `"$self`""
+    try {
+        Start-Process -FilePath (Join-Path $PSHOME 'powershell.exe') -Verb RunAs -ArgumentList $argList | Out-Null
+    } catch {
+        Write-Host ''
+        Write-Host '  Hardening Quest needs Administrator rights.' -ForegroundColor Yellow
+        Write-Host '  Close this window, then right-click "Hardening Quest" -> Run as administrator.' -ForegroundColor Yellow
+        Write-Host ''
+        Read-Host 'Press Enter to close'
+    }
+    exit 0
+}
+
 $LabRoot = 'C:\HardeningLab'
 $Cfg     = Join-Path $LabRoot 'config'
 $StateDir = Join-Path $env:LOCALAPPDATA 'HardeningQuest'

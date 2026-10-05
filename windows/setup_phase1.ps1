@@ -270,7 +270,7 @@ $launch = @"
 @echo off
 title DCIG Hardening Quest
 cd /d "$LabRoot"
-powershell.exe -NoProfile -ExecutionPolicy Bypass -NoExit -File `"$LabRoot\hardening_quest.ps1`"
+powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "Start-Process -FilePath (Join-Path `$PSHOME 'powershell.exe') -Verb RunAs -ArgumentList '-NoProfile -ExecutionPolicy Bypass -NoExit -File `"$LabRoot\hardening_quest.ps1`"'"
 "@
 Set-Content -Path (Join-Path $LabRoot 'bin\hardening-quest.cmd') -Value $launch -Encoding ASCII
 

@@ -1,7 +1,8 @@
 <#
 .SYNOPSIS
   Create Desktop shortcuts that launch the Windows Hardening Quest (Phase 1).
-  Double-click opens a PowerShell window; quest finish auto-starts Phase 2.
+  Double-click opens an elevated PowerShell window (one UAC Yes); quest finish
+  auto-starts Phase 2.
 .EXAMPLE
   .\Make-QuestShortcut.ps1
   .\Make-QuestShortcut.ps1 -AlsoUserDesktop student
@@ -19,20 +20,33 @@ if (-not (Test-Path $questPs1)) {
     return
 }
 
+# Shared launcher body: start elevated so HKLM / firewall / Defender drills work
+$launchBody = @"
+@echo off
+title DCIG Hardening Quest
+cd /d "$LabRoot"
+powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "Start-Process -FilePath (Join-Path `$PSHOME 'powershell.exe') -Verb RunAs -ArgumentList '-NoProfile -ExecutionPolicy Bypass -NoExit -File `"$questPs1`"'"
+"@
+
+function Set-LnkRunAsAdmin([string]$LnkPath) {
+    # Flip the .lnk "Run as administrator" bit (byte 0x15 |= 0x20)
+    try {
+        if (-not (Test-Path $LnkPath)) { return }
+        $bytes = [System.IO.File]::ReadAllBytes($LnkPath)
+        if ($bytes.Length -gt 0x15) {
+            $bytes[0x15] = $bytes[0x15] -bor 0x20
+            [System.IO.File]::WriteAllBytes($LnkPath, $bytes)
+        }
+    } catch { }
+}
+
 function Write-QuestLaunchers([string]$DesktopDir) {
     if (-not $DesktopDir) { return }
     New-Item -ItemType Directory -Force -Path $DesktopDir | Out-Null
 
-    # .cmd fallback - always double-clickable, stays open after finish
     $cmdPath = Join-Path $DesktopDir 'Hardening Quest.cmd'
-    @"
-@echo off
-title DCIG Hardening Quest
-cd /d "$LabRoot"
-powershell.exe -NoProfile -ExecutionPolicy Bypass -NoExit -File "$questPs1"
-"@ | Set-Content -Path $cmdPath -Encoding ASCII
+    Set-Content -Path $cmdPath -Value $launchBody -Encoding ASCII
 
-    # Nice .lnk icon when COM is available
     try {
         $lnkPath = Join-Path $DesktopDir 'Hardening Quest.lnk'
         $w = New-Object -ComObject WScript.Shell
@@ -41,10 +55,10 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -NoExit -File "$questPs1"
         $s.Arguments = "-NoProfile -ExecutionPolicy Bypass -NoExit -File `"$questPs1`""
         $s.WorkingDirectory = $LabRoot
         $s.WindowStyle = 1
-        $s.Description = 'DCIG Hardening Quest - Phase 1 tool drill (auto Phase 2 on finish)'
-        # Shield / admin-looking icon from imageres
+        $s.Description = 'DCIG Hardening Quest - Phase 1 (runs as Administrator)'
         $s.IconLocation = 'imageres.dll,109'
         $s.Save()
+        Set-LnkRunAsAdmin $lnkPath
     } catch { }
 
     try {
@@ -52,7 +66,6 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -NoExit -File "$questPs1"
     } catch { }
 }
 
-# Public Desktop (all users see it at login)
 $public = Join-Path $env:PUBLIC 'Desktop'
 if (Test-Path (Split-Path $public -Parent)) {
     Write-QuestLaunchers $public
@@ -69,13 +82,7 @@ if ($AlsoUserDesktop) {
     } catch { }
 }
 
-# Keep bin launcher in sync (used by mentors / PATH)
 New-Item -ItemType Directory -Force -Path (Join-Path $LabRoot 'bin') | Out-Null
-@"
-@echo off
-title DCIG Hardening Quest
-cd /d "$LabRoot"
-powershell.exe -NoProfile -ExecutionPolicy Bypass -NoExit -File "$questPs1"
-"@ | Set-Content -Path $questCmd -Encoding ASCII
+Set-Content -Path $questCmd -Value $launchBody -Encoding ASCII
 
-Write-Host "[quest-shortcut] Hardening Quest Desktop launchers created"
+Write-Host "[quest-shortcut] Hardening Quest Desktop launchers created (Run as Administrator)"
