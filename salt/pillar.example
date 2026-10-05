@@ -1,17 +1,19 @@
-# DCIG System Hardening — Salt pillar (cyber range)
-#
-# Lab on master: /srv/salt/F26_system_hardening_lab
-#
-# Student pods (isolated 192.168.1.0/24, networking pre-built by range ops):
-#   ubuntuNN      192.168.1.10
-#   win19_srvNN   192.168.1.11
-#
-# Minion grains:
-#   role: hardening-linux
-#   role: hardening-windows
-
-hardening_lab:
-  files_root: /srv/salt/F26_system_hardening_lab
-  scoreboard_url: http://192.168.1.7:8080
-  secret: dcig-hardening-2026
-  student_password: Hardening2026!
+# DCIG System Hardening — Salt pillar (cyber range)
+#
+# Lab on master: /srv/salt/F26_system_hardening_lab
+# Salt master:   172.31.31.3
+#
+# Student pod (per team NN), networking pre-built by range ops:
+#   dcig-syslab-teamNN-ubuntu          192.168.1.10   grain: role=hardening-linux
+#   dcig-syslab-teamNN-win19           192.168.1.11   grain: role=hardening-windows
+#   dcig-syslab-teamNN-ubuntu-jumpbox  192.168.1.18   (access only — no lab grain)
+#
+# Minion grains on targets:
+#   role: hardening-linux
+#   role: hardening-windows
+
+hardening_lab:
+  files_root: /srv/salt/F26_system_hardening_lab
+  scoreboard_url: http://172.31.31.3:8080
+  secret: dcig-hardening-2026
+  student_password: Hardening2026!

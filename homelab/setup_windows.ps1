@@ -44,8 +44,8 @@ if (-not $pr.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
     exit 1
 }
 
-if ($Hostname -notmatch '\d+$') {
-    Warn "Hostname '$Hostname' has no trailing digits — Team ID will be 00"
+if ($Hostname -notmatch '(?i)team\d+' -and $Hostname -notmatch '\d+$') {
+    Warn "Hostname '$Hostname' has no teamNN or trailing digits — Team ID will be 00"
 }
 
 # --- rename ------------------------------------------------------------------

@@ -6,7 +6,10 @@
 set -o pipefail
 
 CFG=/etc/hardening-lab
+LIB=/usr/local/lib/hardening-lab
 H="${HOME:-/home/student}"
+[[ -f "$LIB/team_id.sh" ]] && # shellcheck source=/dev/null
+  source "$LIB/team_id.sh"
 STATE="$H/.hardening-quest"
 PROGRESS="$STATE/progress"; SCOREFILE="$STATE/score"
 SHOW_SCORE_CODE=${SHOW_SCORE_CODE:-0}
@@ -85,7 +88,7 @@ auto "systemctl disable --now cache-sync"
 add_level 1 "ufw — enable firewall" \
 "Tool:  sudo ufw status
         sudo ufw enable
-Check status, then enable. Auto-passes when ufw is active." \
+Check status, then enable. SSH (port 22) is pre-allowed so you won't lock yourself out." \
 "Firewall on = free points in Phase 2 if someone turned it off." \
 auto "sudo ufw enable"
 
@@ -183,7 +186,11 @@ finish() {
   say ""
   local team winhost
   team="$(as_root cat "$CFG/team" 2>/dev/null || echo 'NN')"
-  winhost="win19_srv${team}"
+  if declare -F windows_peer_hostname >/dev/null 2>&1; then
+    winhost="$(windows_peer_hostname "$team")"
+  else
+    winhost="win19_srv${team}"
+  fi
   say "  ${BOLD}NEXT:${N} Log into your Windows box ${C}${winhost}${N} and run the short Windows tool drill:"
   say "    ${C}hardening-quest${N}"
   say ""

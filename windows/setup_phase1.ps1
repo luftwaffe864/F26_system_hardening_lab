@@ -1,7 +1,7 @@
 <#
 ================================================================================
  DCIG System Hardening — Windows Phase 1 setup
- Run elevated on win19_srvNN:
+ Run elevated on dcig-syslab-teamNN-win19 (or homelab win19_srvNN):
 
    powershell.exe -ExecutionPolicy Bypass -File .\setup_phase1.ps1
 
@@ -39,8 +39,15 @@ function Assert-Admin {
     }
 }
 
+$TeamIdScript = Join-Path (Split-Path -Parent $MyInvocation.MyCommand.Path) '..\scripts\TeamId.ps1'
+if (Test-Path $TeamIdScript) { . $TeamIdScript }
+
 function Get-TeamId {
+    if (Get-Command Get-TeamIdFromHostname -ErrorAction SilentlyContinue) {
+        return Get-TeamIdFromHostname
+    }
     $h = $env:COMPUTERNAME
+    if ($h -match '(?i)team(\d+)') { return ('{0:D2}' -f [int]$Matches[1]) }
     if ($h -match '(\d+)$') { return ('{0:D2}' -f [int]$Matches[1]) }
     return '00'
 }
@@ -71,13 +78,15 @@ Set-Content -Path (Join-Path $Cfg 'secret.txt') -Value $Secret -Encoding ASCII
 Set-Content -Path (Join-Path $Cfg 'scoreboard_url.txt') -Value $ScoreboardUrl -Encoding ASCII
 Set-Content -Path (Join-Path $Cfg 'team.txt') -Value $Team -Encoding ASCII
 Set-Content -Path (Join-Path $Cfg 'phase.txt') -Value 'phase1' -Encoding ASCII
+Set-Content -Path (Join-Path $Cfg 'student_password.txt') -Value $StudentPassword -Encoding ASCII
+icacls (Join-Path $Cfg 'student_password.txt') /inheritance:r /grant 'SYSTEM:F' 'Administrators:F' | Out-Null
 # Student quest must be able to drop start_phase2.flag without elevation
 icacls $Cfg /grant 'Users:(OI)(CI)(M)' /T | Out-Null
 icacls $LabRoot /grant 'Users:(OI)(CI)(RX)' /T | Out-Null
 
 # copy scripts next to lab root if present beside this file
 $here = Split-Path -Parent $MyInvocation.MyCommand.Path
-foreach ($f in @('hardening_quest.ps1','prepare_phase2.ps1','score_agent.ps1')) {
+foreach ($f in @('hardening_quest.ps1','prepare_phase2.ps1','score_agent.ps1','Ensure-LabAccess.ps1')) {
     $src = Join-Path $here $f
     if (Test-Path $src) {
         Copy-Item $src (Join-Path $LabRoot $f) -Force
@@ -96,10 +105,12 @@ if (-not (Get-LocalUser -Name 'student' -EA SilentlyContinue)) {
     New-LocalUser -Name 'student' -Password $sec -FullName 'DCIG Student' `
         -PasswordNeverExpires -UserMayNotChangePassword | Out-Null
 } else {
-    Set-LocalUser -Name 'student' -Password $sec
+    Set-LocalUser -Name 'student' -Password $sec -PasswordNeverExpires $true `
+        -UserMayNotChangePassword $true -AccountNeverExpires | Out-Null
 }
+Enable-LocalUser -Name 'student' -EA SilentlyContinue | Out-Null
 Add-LocalGroupMember -Group 'Administrators' -Member 'student' -EA SilentlyContinue
-Say 'student account ready (Administrators)'
+Say 'student account ready (Administrators; password reset by lab if changed)'
 
 # bad admin + unused user
 foreach ($u in @(
@@ -127,6 +138,8 @@ You should have finished the Linux quest first. Harden this Windows box the same
 map the attack surface, then fix users, startup, firewall, and Defender.
 
 Sticky note: tempadmin password is Password1 (reused elsewhere — don't do that).
+
+Lab note: RDP stays enabled (port 3389). Do not rename or delete the student account.
 "@
 Set-Content -Path (Join-Path $LabRoot 'briefing.txt') -Value $brief -Encoding ASCII
 
@@ -228,6 +241,17 @@ try {
     Warn "could not adjust task ACL (watcher flag still works): $($_.Exception.Message)"
 }
 Say 'installed HardeningPreparePhase2 on-demand task'
+
+# Access safety net (RDP + student login) — every 3 minutes as SYSTEM
+$ensurePs1 = Join-Path $LabRoot 'Ensure-LabAccess.ps1'
+if (Test-Path $ensurePs1) {
+    $ensureCmd = "powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"$ensurePs1`""
+    schtasks /Delete /TN 'DCIGEnsureLabAccess' /F 2>$null | Out-Null
+    schtasks /Create /TN 'DCIGEnsureLabAccess' /SC MINUTE /MO 3 /RU SYSTEM /RL HIGHEST `
+        /TR $ensureCmd /F | Out-Null
+    schtasks /Run /TN 'DCIGEnsureLabAccess' 2>$null | Out-Null
+    Say 'installed DCIGEnsureLabAccess (RDP + student safety net every 3 min)'
+}
 
 # Desktop scoreboard shortcut (double-click → browser)
 $scCandidates = @(

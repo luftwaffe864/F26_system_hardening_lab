@@ -216,7 +216,15 @@ Windows-focused categories (easy → hard):
 
 These are NOT the same plants as the Linux box — hunt Windows artifacts.
 
+Keep RDP working: port 3389 stays allowed. Do not rename or delete the student account.
+
 Mentors open the room scoreboard when the race starts.
 "@ | Set-Content (Join-Path $LabRoot 'PHASE2.txt') -Encoding ASCII
+
+$ensure = Join-Path $LabRoot 'Ensure-LabAccess.ps1'
+if (Test-Path $ensure) {
+    & $ensure
+    Say 're-applied RDP/student access safety net'
+}
 
 Say 'Phase 2 prep complete.'

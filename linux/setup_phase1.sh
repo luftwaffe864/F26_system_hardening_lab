@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # =============================================================================
 #  DCIG System Hardening — Linux Phase 1 setup
-#  Run as root on ubuntuNN (homelab or Salt):
+#  Run as root on dcig-syslab-teamNN-ubuntu or homelab ubuntuNN:
 #    sudo ./setup_phase1.sh
 #    sudo ./setup_phase1.sh --no-switch
 #
@@ -28,12 +28,21 @@ HARDENING_SECRET="${HARDENING_SECRET:-dcig-hardening-2026}"
 
 log() { echo "[hardening-linux] $*"; }
 
+TEAM_ID_SCRIPT="$ROOT/../scripts/team_id.sh"
+[[ -f "$TEAM_ID_SCRIPT" ]] && # shellcheck source=/dev/null
+  source "$TEAM_ID_SCRIPT"
+
 team_from_host() {
-  local h n
-  h="$(hostname -s 2>/dev/null || hostname)"
-  n="$(printf '%s' "$h" | grep -oE '[0-9]+$' || true)"
-  if [[ -n "$n" ]]; then printf '%02d' "$((10#$n))"
-  else echo "00"; fi
+  if declare -F team_from_hostname >/dev/null 2>&1; then
+    team_from_hostname
+  else
+    local h n
+    h="$(hostname -s 2>/dev/null || hostname)"
+    n="$(printf '%s' "$h" | grep -oiE 'team[0-9]+' | head -1 | grep -oE '[0-9]+' || true)"
+    if [[ -n "$n" ]]; then printf '%02d' "$((10#$n))"; return; fi
+    n="$(printf '%s' "$h" | grep -oE '[0-9]+$' || true)"
+    if [[ -n "$n" ]]; then printf '%02d' "$((10#$n))"; else echo "00"; fi
+  fi
 }
 
 install_dirs() {
@@ -42,7 +51,8 @@ install_dirs() {
   printf '%s\n' "$SCOREBOARD_URL" > "$CFG/scoreboard_url"
   printf '%s\n' "$(team_from_host)" > "$CFG/team"
   printf 'phase1\n' > "$CFG/phase"
-  chmod 600 "$CFG/secret"
+  printf '%s\n' "$STUDENT_PW" > "$CFG/student_password"
+  chmod 600 "$CFG/secret" "$CFG/student_password"
   chmod 644 "$CFG/scoreboard_url" "$CFG/team" "$CFG/phase"
 }
 
@@ -61,6 +71,9 @@ install_game() {
   install -m 755 "$ROOT/prepare_phase2.sh" "$LIB/prepare_phase2.sh"
   install -m 755 "$ROOT/score_agent.sh" "$LIB/score_agent.sh"
   install -m 755 "$SELF" "$LIB/setup_phase1.sh"
+  if [[ -f "$TEAM_ID_SCRIPT" ]]; then
+    install -m 644 "$TEAM_ID_SCRIPT" "$LIB/team_id.sh"
+  fi
   if [[ -f "$ROOT/../scripts/make_scoreboard_shortcut.sh" ]]; then
     install -m 755 "$ROOT/../scripts/make_scoreboard_shortcut.sh" "$LIB/make_scoreboard_shortcut.sh"
   fi
@@ -89,6 +102,35 @@ EOF
   log "installed hardening-quest + auto Phase-2 service"
 }
 
+install_access_guard() {
+  install -m 755 "$ROOT/ensure_lab_access.sh" "$LIB/ensure_lab_access.sh"
+  cat > /etc/systemd/system/hardening-ensure-access.service <<EOF
+[Unit]
+Description=DCIG Hardening — keep SSH and student access working
+After=network.target
+
+[Service]
+Type=oneshot
+ExecStart=$LIB/ensure_lab_access.sh
+EOF
+  cat > /etc/systemd/system/hardening-ensure-access.timer <<'EOF'
+[Unit]
+Description=DCIG Hardening — access safety net timer
+
+[Timer]
+OnBootSec=45s
+OnUnitActiveSec=3min
+AccuracySec=30s
+
+[Install]
+WantedBy=timers.target
+EOF
+  systemctl daemon-reload
+  systemctl enable --now hardening-ensure-access.timer >/dev/null 2>&1 || true
+  "$LIB/ensure_lab_access.sh" || true
+  log "installed SSH/student access safety net (timer every 3 min)"
+}
+
 plant_users() {
   # Extra admin with a weak password (least privilege / passwords)
   if ! id tempadmin >/dev/null 2>&1; then
@@ -111,10 +153,13 @@ Hostname: $(hostname -s)
 Team: $(team_from_host)
 
 Someone left this workstation messy. Your job in the quest is to find the attack
-surface and harden what you can. When you finish, go to your matching Windows box
-(win19_srvNN) and continue there.
+surface and harden what you can. When you finish, go to your matching Windows box and continue there
+(e.g. dcig-syslab-teamNN-win19 on the range, or win19_srvNN in homelab).
 
 Password reuse note found on sticky pad: tempadmin also uses Password1 on email.
+
+Lab note: SSH (port 22) stays allowed even if you enable ufw. Do not rename or
+remove the student account — mentors can reset it, but you will lose time.
 EOF
   chown "$STUDENT:$STUDENT" /home/"$STUDENT"/briefing.txt
 
@@ -202,6 +247,7 @@ main() {
   plant_files
   plant_service_and_process
   plant_firewall
+  install_access_guard
   # Desktop shortcut → open scoreboard in browser (double-click)
   SHORTCUT_SRC="$ROOT/../scripts/make_scoreboard_shortcut.sh"
   if [[ -f "$LIB/make_scoreboard_shortcut.sh" ]]; then

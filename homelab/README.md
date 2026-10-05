@@ -1,6 +1,6 @@
 # Homelab setup scripts (VMware only)
 
-**Not for the cyber range** — student VMs there already have `192.168.1.10` / `.11`. On the range, use Salt only ([RANGE.md](../RANGE.md)).
+**Not for the cyber range** — student VMs there already have `192.168.1.10` / `.11` / `.18` and hostnames like `dcig-syslab-teamNN-*`. On the range, use Salt only ([RANGE.md](../RANGE.md)).
 
 These scripts configure hostname + static IP on **local VMware** VMs before Phase-1.
 

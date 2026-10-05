@@ -1,12 +1,13 @@
 {# DCIG System Hardening — apply Phase 1 by grain `role`
- #   hardening-linux  → ubuntuNN
- #   hardening-windows → win19_srvNN
+ #   hardening-linux   → dcig-syslab-teamNN-ubuntu @ 192.168.1.10
+ #   hardening-windows → dcig-syslab-teamNN-win19 @ 192.168.1.11
+ #   (jumpbox .18 — no lab grain)
  #
- # Homelab (1 pair): set the same grains on ubuntu01 + win19_srv01 and apply.
+ # Homelab: ubuntu01 + win19_srv01 with the same grains.
  #}
 {% set role = salt['grains.get']('role', '') %}
 {% set files_root = salt['pillar.get']('hardening_lab:files_root', '/srv/salt/F26_system_hardening_lab') %}
-{% set scoreboard_url = salt['pillar.get']('hardening_lab:scoreboard_url', 'http://192.168.1.7:8080') %}
+{% set scoreboard_url = salt['pillar.get']('hardening_lab:scoreboard_url', 'http://172.31.31.3:8080') %}
 {% set secret = salt['pillar.get']('hardening_lab:secret', 'dcig-hardening-2026') %}
 {% set student_pw = salt['pillar.get']('hardening_lab:student_password', 'Hardening2026!') %}
 

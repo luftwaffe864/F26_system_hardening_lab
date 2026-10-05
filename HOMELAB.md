@@ -13,9 +13,9 @@ End-to-end guide for a **VMware homelab** only. On the **cyber range**, networki
 | Windows Server 2019 (Desktop Experience) | Windows hardening target | `win19_srv01` | `192.168.1.11` |
 | VMware NAT gateway | Internet for the VMs | — | `192.168.1.1` |
 
-Production pods use **[RANGE.md](RANGE.md)** (`192.168.1.10` / `.11` per student). Homelab VMware NAT may use a **different subnet** — keep the same **last octets** (`.7` admin Kali, `.10` Linux, `.11` Windows) when possible, or override `--gateway` in section [2](#2-vmware-networking).
+Production pods use **[RANGE.md](RANGE.md)** (`192.168.1.10` / `.11` / `.18`, hostnames `dcig-syslab-teamNN-*`, Salt master `172.31.31.3`). Homelab VMware NAT may use a **different subnet** — keep the same **last octets** (`.7` mentor Kali, `.10` Linux, `.11` Windows) when possible, or override `--gateway` in section [2](#2-vmware-networking).
 
-**Team ID** comes from the trailing digits of the target hostnames (`ubuntu01` + `win19_srv01` → **Team 01**). Digits must match on both boxes.
+**Team ID:** on the range, digits after `team` in the hostname; in homelab, trailing digits (`ubuntu01` + `win19_srv01` → **Team 01**). See [`scripts/team_id.sh`](scripts/team_id.sh).
 
 ---
 
@@ -830,7 +830,7 @@ Phase-2 prep is triggered by finishing the quests; you normally do **not** run `
 
 | Problem | What to check |
 |---------|----------------|
-| Team shows as `00` | Hostname has no trailing digits (`ubuntu01`, `win19_srv01`) |
+| Team shows as `00` | Hostname missing `teamNN` (range) or trailing digits (homelab) |
 | Cannot ping between VMs | All three on **NAT** (same VMnet8); correct IPs/mask; Windows ICMP rule |
 | No internet / cannot `git clone` | Gateway must be NAT **`.2`** (not `.1`); DNS `1.1.1.1`; NIC type = NAT in VM settings |
 | Scoreboard page won’t load from Ubuntu | `curl -v http://192.168.1.7:8080/api/status` from Ubuntu; Kali firewall; `HARDENING_HOST=0.0.0.0` |

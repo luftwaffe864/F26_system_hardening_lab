@@ -63,7 +63,7 @@ $Levels = @(
     },
     @{
         M=1; Title='Firewall — find and remove a bad rule'
-        Task="Tools:  Get-NetFirewallRule -DisplayName '*Support*'`n        Remove-NetFirewallRule -DisplayName 'Remote Admin Support'`n   Or:  wf.msc`nRemove/disable 'Remote Admin Support'. Auto-passes when gone or disabled."
+        Task="Tools:  Get-NetFirewallRule -DisplayName '*Support*'`n        Remove-NetFirewallRule -DisplayName 'Remote Admin Support'`n   Or:  wf.msc`nRemove/disable 'Remote Admin Support' only — leave 'DCIG Lab RDP Access' alone. Auto-passes when gone or disabled."
         Why='Phase 2 may plant inbound allows — same cmdlets / wf.msc.'
         Type='auto'; Hints=@('Remove-NetFirewallRule -DisplayName "Remote Admin Support"')
     },

@@ -50,9 +50,9 @@ done
 
 [[ $EUID -eq 0 ]] || { echo "Run as root: sudo bash $0 ..."; exit 1; }
 
-# Hostname must end with digits for Team ID
-if ! [[ "$HOSTNAME_NEW" =~ [0-9]+$ ]]; then
-  echo "WARNING: hostname '$HOSTNAME_NEW' has no trailing digits — Team ID will be 00"
+# Team ID: range uses teamNN in name; homelab uses trailing digits (ubuntu01)
+if ! [[ "$HOSTNAME_NEW" =~ [Tt][Ee][Aa][Mm][0-9]+ ]] && ! [[ "$HOSTNAME_NEW" =~ [0-9]+$ ]]; then
+  echo "WARNING: hostname '$HOSTNAME_NEW' has no teamNN or trailing digits — Team ID will be 00"
 fi
 
 log() { echo "[setup-ubuntu] $*"; }

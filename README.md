@@ -4,14 +4,15 @@ Guided quests on **Linux then Windows**, then a CyberPatriot-style **Phase 2** f
 
 Each student gets a paired box set on an **isolated `192.168.1.0/24`** (range ops pre-configure subnet and IPs):
 
-| OS | Hostname pattern | IP (in each pod) |
-|----|------------------|------------------|
-| Linux | `ubuntu01` … `ubuntu30` | **`192.168.1.10`** |
-| Windows | `win19_srv01` … `win19_srv30` | **`192.168.1.11`** |
+| Role | Hostname pattern | IP (in each pod) |
+|------|------------------|------------------|
+| Linux target | `dcig-syslab-teamNN-ubuntu` | **`192.168.1.10`** |
+| Windows target | `dcig-syslab-teamNN-win19` | **`192.168.1.11`** |
+| Ubuntu jumpbox | `dcig-syslab-teamNN-ubuntu-jumpbox` | **`192.168.1.18`** |
 
-**Team NN** = trailing digits (e.g. `ubuntu07` + `win19_srv07` → Team 07).
+**Team NN** = digits after `team` in the hostname (e.g. `team07` → Team 07). Homelab may still use `ubuntu01` / `win19_srv01` (trailing digits).
 
-**Mentors:** shared **admin Kali** (Salt + scoreboard). Push lab with Salt — **do not** re-IP student VMs. Students: Guacamole SSH/RDP only. See **[RANGE.md](RANGE.md)**.
+**Mentors:** Salt master **`172.31.31.3`** + scoreboard. Push lab with Salt — **do not** re-IP student VMs. Students: **jumpbox** → SSH Linux / RDP Windows. See **[RANGE.md](RANGE.md)**.
 
 ## Student flow
 
@@ -22,10 +23,10 @@ Each student gets a paired box set on an **isolated `192.168.1.0/24`** (range op
 5. Mentors **open Phase 2** → CyberPatriot-style race (most of the meeting time)
 
 ```text
-ubuntuNN ──~10m drill──► handoff + linux prepare_phase2
+jumpbox (.18) ──► Linux .10 ──~10m drill──► handoff + linux prepare_phase2
                               │
                               ▼
-                   win19_srvNN ──~10m drill──► prepare_phase2
+                   Windows .11 ──~10m drill──► prepare_phase2
                               │
                               ▼
                    Phase 2 find-and-fix (majority of time) ──► live scoreboard

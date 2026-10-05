@@ -257,8 +257,14 @@ Linux-focused categories (easy → hard):
 
 These are NOT the same plants as the Windows box — hunt Linux artifacts.
 
+Keep SSH working: port 22 stays allowed if ufw is on. Do not remove the student account.
+
 Mentors open the room scoreboard when the race starts.
 EOF
 chown "$STUDENT:$STUDENT" /home/"$STUDENT"/PHASE2.txt
+
+if [[ -x "$LIB/ensure_lab_access.sh" ]]; then
+  "$LIB/ensure_lab_access.sh" || true
+fi
 
 log "Phase 2 prep complete for team $TEAM"
