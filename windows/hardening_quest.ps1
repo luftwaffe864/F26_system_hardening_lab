@@ -137,8 +137,8 @@ function Finish-Quest {
     Write-Host ''
     Write-Host ("  Windows tool drill complete. Score: {0}" -f $script:Score) -ForegroundColor Green
     Write-Host ''
-    Write-Host '  Please wait while we prepare your system for the CyberPatriot race...' -ForegroundColor Yellow
-    Write-Host '  (Phase 2 prep starts automatically - do not run any extra scripts.)' -ForegroundColor DarkGray
+    Write-Host '  Auto-starting Phase 2 (CyberPatriot race prep)...' -ForegroundColor Yellow
+    Write-Host '  Do not close this window yet - wait for the ready message.' -ForegroundColor DarkGray
     Write-Host ''
 
     $prep = Join-Path $LabRoot 'prepare_phase2.ps1'
@@ -151,33 +151,26 @@ function Finish-Quest {
     $phase2Txt = Join-Path $LabRoot 'PHASE2.txt'
 
     New-Item -ItemType Directory -Force -Path $Cfg | Out-Null
+    # Flag wakes the SYSTEM watcher within ~1 min even if schtasks /Run is denied
     'go' | Set-Content -Path $flag -Encoding ASCII
     Set-Content -Path $phaseFile -Value 'phase1-done' -Encoding ASCII
 
     $kicked = $false
-    try {
-        $null = schtasks /Run /TN 'HardeningPreparePhase2' 2>&1
-        if ($LASTEXITCODE -eq 0) { $kicked = $true }
-    } catch { }
-
-    if (-not $kicked -and (Test-Path $prep)) {
+    foreach ($tn in @('HardeningPreparePhase2', 'HardeningPhase2Watch')) {
         try {
-            Start-Process -FilePath 'powershell.exe' -Verb RunAs -Wait -ArgumentList @(
-                '-NoProfile','-ExecutionPolicy','Bypass','-File', $prep
-            ) -EA Stop
-            $kicked = $true
-        } catch {
-            try {
-                & $prep
-                $kicked = $true
-            } catch {
-                Write-Host '  Waiting for SYSTEM watcher to pick up Phase 2 prep...' -ForegroundColor DarkGray
-            }
-        }
+            $null = schtasks /Run /TN $tn 2>&1
+            if ($LASTEXITCODE -eq 0) { $kicked = $true }
+        } catch { }
+    }
+
+    if (-not $kicked) {
+        Write-Host '  Scheduled task kick deferred - SYSTEM watcher will pick up the flag.' -ForegroundColor DarkGray
+    } else {
+        Write-Host '  Phase 2 prep task started.' -ForegroundColor DarkGray
     }
 
     $ready = $false
-    for ($i = 0; $i -lt 24; $i++) {
+    for ($i = 0; $i -lt 36; $i++) {
         Start-Sleep -Seconds 5
         $ph = ''
         if (Test-Path $phaseFile) { $ph = (Get-Content $phaseFile -Raw).Trim() }
@@ -190,12 +183,13 @@ function Finish-Quest {
     Write-Host ''
 
     if ($ready) {
-        Write-Host '  Phase 2 is ready - spend your time here hunting findings.' -ForegroundColor Green
+        Write-Host '  Phase 2 is ready - hunt findings on this Windows box now.' -ForegroundColor Green
     } else {
         Write-Host '  Phase 2 prep is still running (or needs a mentor). Check C:\HardeningLab\phase2-prep.log' -ForegroundColor Yellow
     }
     Write-Host ("  When mentors open scoring, fix findings for Team {0} - Linux + Windows both count." -f $team) -ForegroundColor Cyan
-    Write-Host '  Read C:\HardeningLab\PHASE2.txt for categories. Double-click Desktop Scoreboard for live points.' -ForegroundColor DarkGray
+    Write-Host '  Read C:\HardeningLab\PHASE2.txt for categories.' -ForegroundColor DarkGray
+    Write-Host '  Desktop: Hardening Quest (this drill)  |  DCIG Scoreboard (live points)' -ForegroundColor DarkGray
     Write-Host ''
 }
 

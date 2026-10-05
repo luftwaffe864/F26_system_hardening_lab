@@ -163,10 +163,12 @@ foreach ($f in @('hardening_quest.ps1','prepare_phase2.ps1','score_agent.ps1','E
         Say "installed $f"
     }
 }
-# Keep shortcut helper on the box for mentors / re-runs
-$scSrc = Join-Path (Split-Path $here -Parent) 'scripts\Make-ScoreboardShortcut.ps1'
-if (Test-Path $scSrc) {
-    Copy-Item $scSrc (Join-Path $LabRoot 'Make-ScoreboardShortcut.ps1') -Force
+# Keep shortcut helpers on the box for mentors / re-runs
+foreach ($helper in @('Make-ScoreboardShortcut.ps1', 'Make-QuestShortcut.ps1')) {
+    $scSrc = Join-Path (Split-Path $here -Parent) "scripts\$helper"
+    if (Test-Path $scSrc) {
+        Copy-Item $scSrc (Join-Path $LabRoot $helper) -Force
+    }
 }
 
 # student account (avoid UserMayNotChangePassword - missing on some Server 2019 builds)
@@ -262,13 +264,32 @@ Set-Content -Path $secFile -Value 'API_KEY=windows-demo-key-not-real' -Encoding 
 icacls $secFile /grant Everyone:F | Out-Null
 Say 'planted C:\CaseFiles\keys.txt (Everyone full)'
 
-# helper launcher
+# helper launcher + Desktop icon (double-click starts quest; finish auto-runs Phase 2)
 New-Item -ItemType Directory -Force -Path (Join-Path $LabRoot 'bin') | Out-Null
 $launch = @"
 @echo off
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"$LabRoot\hardening_quest.ps1`"
+title DCIG Hardening Quest
+cd /d "$LabRoot"
+powershell.exe -NoProfile -ExecutionPolicy Bypass -NoExit -File `"$LabRoot\hardening_quest.ps1`"
 "@
 Set-Content -Path (Join-Path $LabRoot 'bin\hardening-quest.cmd') -Value $launch -Encoding ASCII
+
+$questScCandidates = @(
+    (Join-Path (Split-Path $here -Parent) 'scripts\Make-QuestShortcut.ps1'),
+    (Join-Path $LabRoot 'Make-QuestShortcut.ps1')
+)
+$questSc = $questScCandidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+if ($questSc) {
+    Copy-Item $questSc (Join-Path $LabRoot 'Make-QuestShortcut.ps1') -Force
+    & $questSc -LabRoot $LabRoot -AlsoUserDesktop 'student'
+    Say 'Hardening Quest Desktop shortcut (Public + student)'
+} else {
+    foreach ($desk in @((Join-Path $env:PUBLIC 'Desktop'), 'C:\Users\student\Desktop')) {
+        New-Item -ItemType Directory -Force -Path $desk | Out-Null
+        Set-Content -Path (Join-Path $desk 'Hardening Quest.cmd') -Value $launch -Encoding ASCII
+    }
+    Say 'Hardening Quest Desktop .cmd (inline fallback)'
+}
 
 # Auto Phase-2: student quest only drops a flag; SYSTEM watcher runs prepare (no UAC).
 $watch = @'
@@ -347,7 +368,7 @@ if ($scHit) {
     Say "scoreboard shortcut (inline) -> $urlClean"
 }
 
-Say "Quest: $LabRoot\hardening_quest.ps1  (or bin\hardening-quest.cmd)"
+Say "Quest: Desktop 'Hardening Quest' icon  (or $LabRoot\bin\hardening-quest.cmd)"
 Say "Student login: student / $StudentPassword"
-Say 'Phase 1 complete.'
+Say 'Phase 1 complete. Quest finish auto-starts Phase 2 (CyberPatriot race).'
 
