@@ -64,6 +64,9 @@ sudo cp /srv/salt/F26_system_hardening_lab/salt/hardening-lab.sls /srv/salt/hard
 Windows note: Salt `file.recurse` must **not** set Unix `file_mode`/`dir_mode` on Windows minions (error: *mode management is not supported on Windows*). Lab files land under `C:\HardeningLab\src` on Windows.
 
 5. Start scoreboard on the mentor host (often the Salt master at `172.31.31.2`) — [`scoreboard/`](scoreboard/) or [`homelab/start_scoreboard.sh`](homelab/start_scoreboard.sh).
+
+   On a minimal Ubuntu Salt master, install once: `sudo apt install -y python3-venv python3-pip`  
+   If venv is missing, the start script falls back to `pip3 install --user flask`. Remove a broken partial venv: `rm -rf ~/.cache/dcig-hardening-scoreboard/venv`
 6. Students play quests on **`.10` then `.11`**, then mentors open Phase 2:
 
 ```bash
