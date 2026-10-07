@@ -255,6 +255,7 @@ $($userLines -join "`r`n")
 
 Built-in Windows accounts (Administrator, Guest, DefaultAccount,
 WDAGUtilityAccount) are system accounts - do not delete them.
+Former employees under an HR hold may remain, but only if disabled.
 "@
 Set-Content -Path (Join-Path $LabRoot 'authorized_users.txt') -Value $auth -Encoding ASCII
 
