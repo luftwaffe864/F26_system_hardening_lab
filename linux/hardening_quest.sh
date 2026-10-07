@@ -12,7 +12,6 @@ H="${HOME:-/home/student}"
   source "$LIB/team_id.sh"
 STATE="$H/.hardening-quest"
 PROGRESS="$STATE/progress"; SCOREFILE="$STATE/score"
-SHOW_SCORE_CODE=${SHOW_SCORE_CODE:-0}
 
 [[ -t 1 ]] && { R=$'\e[31m'; G=$'\e[32m'; Y=$'\e[33m'; C=$'\e[36m'; BOLD=$'\e[1m'; DIM=$'\e[2m'; N=$'\e[0m'; } \
             || { R=; G=; Y=; C=; BOLD=; DIM=; N=; }
@@ -30,156 +29,164 @@ mkdir -p "$STATE"
 LEVEL=1; SCORE=0; HINTS_USED=0
 [[ -f "$PROGRESS" ]] && LEVEL=$(( $(cat "$PROGRESS") + 1 ))
 [[ -f "$SCOREFILE" ]] && SCORE=$(cat "$SCOREFILE")
+TEAM_NN="$(cat "$CFG/team" 2>/dev/null || echo NN)"
 
-# ---- missions / levels ------------------------------------------------------
-# Short tool drill (~10 min). Teach command → use once → next. Phase 2 is the real race.
-M_NAME=("TOOL DRILL")
-M_TAG=("DRILL")
-M_STORY=(
-"Goal: under ~10 minutes, learn the Linux tools you need for the CyberPatriot race.
-Each step shows the command (and important flags). Run it, prove it worked, move on.
-When you finish, Phase 2 plants harder findings automatically — that is where you spend your time."
-)
-M_OBJ=(
-"Accounts, listeners, services, firewall, cron, files — quick reps only"
-)
+# ---- levels -----------------------------------------------------------------
+# Task text = tool syntax + goal only. Answers live in the LAST hint.
+L_TITLE=(); L_TASK=(); L_TYPE=(); L_HINTS=()
+add_level() { L_TITLE+=("$1"); L_TASK+=("$2"); L_TYPE+=("$3"); L_HINTS+=("$4"); }
 
-L_M=(); L_TITLE=(); L_TASK=(); L_WHY=(); L_TYPE=(); L_HINTS=()
-add_level() {
-  L_M+=("$1"); L_TITLE+=("$2"); L_TASK+=("$3"); L_WHY+=("$4"); L_TYPE+=("$5"); L_HINTS+=("$6")
-}
+add_level "cat — read a file" \
+"Tool  cat <file>
+Task  Read the briefing in your home folder.  answer <team number>" \
+answer "ls ~ to see what is in your home folder|cat ~/briefing.txt|answer $TEAM_NN"
 
-# 1 — cat
-add_level 1 "cat — read a file" \
-"Tool:  cat <file>
-Run:   cat ~/briefing.txt
-Submit your two-digit team number.  answer <NN>" \
-"You will read notes and configs constantly in Phase 2." \
-answer "cat ~/briefing.txt"
+add_level "getent — group members" \
+"Tool  getent group <group>
+Task  Who in the sudo group should not be an admin?  answer <user>" \
+answer "getent group sudo|Ignore student - that is you|answer tempadmin"
 
-# 2 — users / sudo group
-add_level 1 "getent — list a group" \
-"Tool:  getent group <name>
-Run:   getent group sudo
-Who should NOT be an admin here? Submit that username.  answer <user>" \
-"Phase 2: hunt extra sudo users the same way." \
-answer "getent group sudo|tempadmin"
+add_level "ss — listening ports" \
+"Tool  ss -tulnp   (-t tcp  -u udp  -l listening  -n numeric  -p process)
+Task  Find the odd TCP port listening on this box.  answer <port>" \
+answer "ss -tulnp|Look at Local Address for a high port that is not 22|answer 9999"
 
-# 3 — listeners
-add_level 1 "ss — listening ports" \
-"Tool:  ss -tulnp
-  -t tcp   -u udp   -l listening   -n numeric   -p process
-Run:   ss -tulnp
-Something is listening on TCP 9999. Confirm with:  answer 9999" \
-"Unexpected listeners are high-value Phase 2 findings." \
-answer "ss -tulnp|9999"
+add_level "systemctl — stop a service" \
+"Tool  systemctl list-units --type=service --state=running
+      sudo systemctl disable --now <unit>
+Task  A fake service is running. Stop it and keep it off after reboot." \
+auto "systemctl list-units --type=service --state=running|Its name has 'cache' in it|sudo systemctl disable --now cache-sync"
 
-# 4 — services (practice stop/disable)
-add_level 1 "systemctl — stop a service" \
-"Tool:  sudo systemctl disable --now <unit>
-  disable = no start on boot    --now = also stop right now
-Practice on the planted unit:
-  sudo systemctl disable --now cache-sync
-Level auto-passes when cache-sync is stopped and disabled." \
-"Phase 2 will have stealthier service names — same commands." \
-auto "systemctl disable --now cache-sync"
+add_level "cron + rm — persistence" \
+"Tool  ls /etc/cron.d    cat <file>    sudo rm [-rf] <path>
+Task  A fake cleaner runs from cron. Delete the cron job and the program it runs." \
+auto "ls /etc/cron.d then cat the odd file|The job runs something under /opt|sudo rm -f /etc/cron.d/pccleaner && sudo rm -rf /opt/PCCleaner"
 
-# 5 — firewall (--force skips the y|n prompt that breaks this REPL over SSH)
-add_level 1 "ufw — enable firewall" \
-"Tool:  sudo ufw status
-        sudo ufw --force enable
-Check status, then enable with --force (no y/n prompt). SSH (port 22) is pre-allowed
-so you won't lock yourself out. Or skip the command:  answer ufw" \
-"Firewall on = free points in Phase 2 if someone turned it off." \
-auto "sudo ufw --force enable|answer ufw"
+add_level "ufw — default deny firewall" \
+"Tool  sudo ufw default <allow|deny> incoming
+      sudo ufw allow <port>/tcp
+      sudo ufw --force enable      sudo ufw status verbose
+Task  Block all incoming traffic except SSH (22) and web (80), then turn ufw on." \
+auto "sudo ufw default deny incoming|sudo ufw allow 22/tcp && sudo ufw allow 80/tcp|sudo ufw --force enable  (--force skips the y/n prompt)"
 
-# 6 — cron + remove bloat (one quick combo)
-add_level 1 "cron + rm — persistence & junk software" \
-"Tools:  ls /etc/cron.d
-         sudo rm -rf <path>     and/or     sudo rm /etc/cron.d/<file>
-1) List cron drop-ins:  ls /etc/cron.d
-2) Remove the fake cleaner and its cron:
-     sudo rm -rf /opt/PCCleaner
-     sudo rm -f /etc/cron.d/pccleaner
-Auto-passes when both are gone. Or skip the deletes:  answer pccleaner" \
-"Phase 2: more cron paths and /opt junk — same pattern." \
-auto "rm PCCleaner|answer pccleaner"
+add_level "sudoers — least privilege" \
+"Tool  sudo visudo -f /etc/sudoers.d/<name>   (checks syntax before saving)
+      <user> ALL=(root) /full/path/to/command args
+      sudo -l -U <user>
+Task  backupop may ONLY run: systemctl restart cron  as root. Nothing else." \
+auto "which systemctl gives the full path|sudo visudo -f /etc/sudoers.d/backupop|Add the line: backupop ALL=(root) /usr/bin/systemctl restart cron"
+
+add_level "passwd — disable root" \
+"Tool  sudo passwd -S <user>    (P = usable password, L = locked)
+      sudo passwd -l <user>
+Task  Root has a password and can log in directly. Lock it." \
+auto "sudo passwd -S root|-l locks the password; sudo still works for admins|sudo passwd -l root"
+
+add_level "sshd_config — secure SSH" \
+"Tool  sudo nano /etc/ssh/sshd_config
+      sudo sshd -t                          (test syntax)
+      sudo sshd -T | grep -i <setting>      (effective value)
+      sudo systemctl reload ssh
+Task  No root login, at most 3 auth tries, no X11 forwarding." \
+auto "Settings: PermitRootLogin  MaxAuthTries  X11Forwarding|sshd uses the FIRST value it finds - edit existing lines, do not just append|PermitRootLogin no / MaxAuthTries 3 / X11Forwarding no, then sudo sshd -t && sudo systemctl reload ssh"
+
+add_level "password policy" \
+"Tool  sudo nano /etc/login.defs              (account aging)
+      sudo nano /etc/security/pwquality.conf  (password strength)
+Task  Passwords expire within 90 days and must be at least 12 characters." \
+auto "Look for PASS_MAX_DAYS and minlen|Lines starting with # are ignored - remove the #|PASS_MAX_DAYS 90 in login.defs and minlen = 12 in pwquality.conf"
 
 TOTAL=${#L_TITLE[@]}
 
-check_1()  { [[ "$(norm "$1")" == "$(norm "$(as_root cat "$CFG/team" 2>/dev/null)")" ]]; }
-check_2()  { [[ "$(norm "$1")" == "tempadmin" ]]; }
-check_3()  { [[ "$(norm "$1")" == "9999" ]]; }
-check_4()  { ! svc_active cache-sync && ! svc_enabled cache-sync; }
-check_5()  {
-  # Auto path: firewall already active. Answer path: they typed the tool name.
-  if [[ -n "${1:-}" ]]; then
-    [[ "$(norm "$1")" == "ufw" ]]
-  else
-    command -v ufw >/dev/null && ufw status 2>/dev/null | head -1 | grep -qi 'active'
-  fi
+check_1() { [[ "$(norm "$1")" == "$(norm "$TEAM_NN")" ]]; }
+check_2() { [[ "$(norm "$1")" == "tempadmin" ]]; }
+check_3() { [[ "$(norm "$1")" == "9999" ]]; }
+check_4() { ! svc_active cache-sync && ! svc_enabled cache-sync; }
+check_5() { [[ ! -e /opt/PCCleaner ]] && [[ ! -e /etc/cron.d/pccleaner ]]; }
+check_6() {
+  local s; s="$(as_root ufw status verbose 2>/dev/null)" || return 1
+  grep -qi '^Status: active' <<<"$s" &&
+    grep -qiE '^Default: (deny|reject) \(incoming\)' <<<"$s" &&
+    grep -qE '^(22(/tcp)?|OpenSSH)[[:space:]]+ALLOW' <<<"$s" &&
+    grep -qE '^80(/tcp)?[[:space:]]+ALLOW' <<<"$s"
 }
-check_6()  {
-  if [[ -n "${1:-}" ]]; then
-    [[ "$(norm "$1")" == "pccleaner" ]]
-  else
-    [[ ! -e /opt/PCCleaner ]] && [[ ! -e /etc/cron.d/pccleaner ]]
-  fi
+check_7() {
+  as_root visudo -c -q >/dev/null 2>&1 || return 1
+  id -nG backupop 2>/dev/null | tr ' ' '\n' | grep -qxE 'sudo|admin|wheel' && return 1
+  local l; l="$(as_root sudo -l -U backupop 2>/dev/null)" || return 1
+  grep -qE 'systemctl restart cron(\.service)?[[:space:]]*$' <<<"$l" &&
+    ! grep -qE '\)[[:space:]]*(NOPASSWD:[[:space:]]*)?ALL[[:space:]]*$' <<<"$l"
+}
+check_8() { [[ "$(as_root passwd -S root 2>/dev/null | awk '{print $2}')" == "L" ]]; }
+check_9() {
+  as_root install -d -m 755 /run/sshd >/dev/null 2>&1 || true
+  local t m
+  t="$(as_root /usr/sbin/sshd -T 2>/dev/null)" || return 1
+  m="$(awk '$1=="maxauthtries"{print $2}' <<<"$t")"
+  grep -qx 'permitrootlogin no' <<<"$t" &&
+    grep -qx 'x11forwarding no' <<<"$t" &&
+    [[ "$m" =~ ^[0-9]+$ ]] && (( m <= 3 ))
+}
+check_10() {
+  local d m p
+  d="$(awk '/^[[:space:]]*PASS_MAX_DAYS/{v=$2} END{print v}' /etc/login.defs 2>/dev/null)"
+  m="$(cat /etc/security/pwquality.conf /etc/security/pwquality.conf.d/*.conf 2>/dev/null |
+       awk -F= '/^[[:space:]]*minlen[[:space:]]*=/{gsub(/[[:space:]]/,"",$2); v=$2} END{print v}')"
+  p="$(grep -hoE 'pam_pwquality\.so.*minlen=[0-9]+' /etc/pam.d/common-password 2>/dev/null | grep -oE '[0-9]+$' | tail -1)"
+  [[ "$p" =~ ^[0-9]+$ ]] && { [[ "$m" =~ ^[0-9]+$ ]] && (( m >= p )) || m="$p"; }
+  [[ "$d" =~ ^[0-9]+$ ]] && (( d >= 1 && d <= 90 )) &&
+    [[ "$m" =~ ^[0-9]+$ ]] && (( m >= 12 ))
 }
 
-base_points() { echo 10; }
-level_points() { local p=$(( $(base_points) - 2 * HINTS_USED )); (( p < 0 )) && p=0; echo "$p"; }
+level_points() { local p=$(( 10 - 2 * HINTS_USED )); (( p < 0 )) && p=0; echo "$p"; }
 save() { echo "$((LEVEL - 1))" > "$PROGRESS"; echo "$SCORE" > "$SCOREFILE"; }
 
 banner() {
-  cat <<EOF
-${C}${BOLD}
-  HARDENING QUEST  ·  Linux  ·  ~10 min tool drill
-${N}${DIM}  Learn the commands for the CyberPatriot race. Type ${N}help${DIM} any time.${N}
-
-EOF
+  say ""
+  say "${C}${BOLD}  HARDENING QUEST · Linux${N}"
+  say "${DIM}  $TOTAL short drills. Type ${N}help${DIM} for commands.${N}"
+  say ""
 }
 
 show_help() {
   line
-  say "  ${C}task${N}  ${C}mission${N}  ${C}hint${N}  ${C}answer X${N}  ${C}skip${N}  ${C}progress${N}  ${C}quit${N}"
-  say "  Everything else runs as a real shell command."
-  line
-}
-
-show_mission() {
-  local m=$1 i=$((m - 1))
-  line
-  printf '%s MISSION %d: %s%s\n' "$BOLD" "$m" "${M_NAME[$i]}" "$N"
-  printf '%s\n' "${M_STORY[$i]}" | sed 's/^/  /'
+  say "  ${C}task${N}  ${C}hint${N}  ${C}answer X${N}  ${C}skip${N}  ${C}progress${N}  ${C}scoreboard${N}  ${C}quit${N}"
+  say "  ${DIM}Anything else runs as a normal shell command.${N}"
   line
 }
 
 show_task() {
   local i=$((LEVEL - 1))
   line
-  printf '%s%s · %s%s\n' "$BOLD" "${M_TAG[$(( ${L_M[$i]} - 1 ))]}" "${L_TITLE[$i]}" "$N"
+  printf '%sDRILL %d/%d · %s%s\n' "$BOLD" "$LEVEL" "$TOTAL" "${L_TITLE[$i]}" "$N"
   printf '%s\n' "${L_TASK[$i]}" | sed 's/^/  /'
-  say "  ${DIM}Why: ${L_WHY[$i]}${N}"
   line
 }
 
 show_hint() {
-  local i=$((LEVEL - 1))
+  local i=$((LEVEL - 1)) label
   IFS='|' read -r -a hints <<<"${L_HINTS[$i]}"
   if (( HINTS_USED >= ${#hints[@]} )); then warn "No more hints."; return; fi
-  printf '%sHint %d (-2 pts):%s %s\n' "$Y" $((HINTS_USED + 1)) "$N" "${hints[$HINTS_USED]}"
+  label="Hint $((HINTS_USED + 1))/${#hints[@]}"
+  (( HINTS_USED == ${#hints[@]} - 1 )) && label="Answer"
+  printf '%s%s (-2 pts):%s %s\n' "$Y" "$label" "$N" "${hints[$HINTS_USED]}"
   HINTS_USED=$((HINTS_USED + 1))
 }
 
+show_scoreboard() {
+  if command -v scoreboard >/dev/null 2>&1; then
+    scoreboard
+  else
+    say "  Scoreboard: $(cat "$CFG/scoreboard_url" 2>/dev/null || echo 'ask a mentor')"
+  fi
+}
+
 advance() {
-  local pts=${1:-$(level_points)} m=${L_M[$((LEVEL - 1))]}
+  local pts=${1:-$(level_points)}
   SCORE=$((SCORE + pts))
   ok "Level complete  +$pts   (total $SCORE)"
-  LEVEL=$((LEVEL + 1)); save
+  LEVEL=$((LEVEL + 1)); HINTS_USED=0; save
   if (( LEVEL > TOTAL )); then finish; exit 0; fi
-  if [[ "${L_M[$((LEVEL - 1))]}" != "$m" ]]; then show_mission "${L_M[$((LEVEL - 1))]}"; fi
-  HINTS_USED=0
   show_task
 }
 
@@ -189,14 +196,7 @@ try_auto() {
 }
 
 try_answer() {
-  local t="${L_TYPE[$((LEVEL - 1))]}"
-  # "auto" levels may still accept answer <value> when the hint string includes it
-  if [[ "$t" != "answer" && "$t" != "auto" ]]; then
-    warn "This level does not take an answer."; return
-  fi
-  if [[ "$t" == "auto" && "${L_HINTS[$((LEVEL - 1))]}" != *answer* ]]; then
-    warn "This level auto-passes; no answer needed."; return
-  fi
+  [[ "${L_TYPE[$((LEVEL - 1))]}" == "answer" ]] || { warn "This drill passes on its own once the system is fixed."; return; }
   [[ -n "${1:-}" ]] || { warn "Usage: answer <value>"; return; }
   if "check_$LEVEL" "$1"; then advance; else err "Not it. Try hint."; fi
 }
@@ -205,17 +205,14 @@ finish() {
   line
   printf '%s%s Linux quest complete. Score: %d%s\n' "$G" "$BOLD" "$SCORE" "$N"
   say ""
-  local team winhost
-  team="$(as_root cat "$CFG/team" 2>/dev/null || echo 'NN')"
+  local winhost
   if declare -F windows_peer_hostname >/dev/null 2>&1; then
-    winhost="$(windows_peer_hostname "$team")"
+    winhost="$(windows_peer_hostname "$TEAM_NN")"
   else
-    winhost="win19_srv${team}"
+    winhost="win19_srv${TEAM_NN}"
   fi
-  say "  ${BOLD}NEXT:${N} Log into your Windows box ${C}${winhost}${N} and run the short Windows tool drill:"
-  say "    ${C}hardening-quest${N}"
-  say ""
-  say "  Phase 2 (CyberPatriot race) prep starts automatically on this Linux box."
+  say "  ${BOLD}NEXT:${N} RDP to ${C}${winhost}${N} and double-click ${C}Hardening Quest${N} on the Desktop."
+  say "  Phase 2 prep is starting on this Linux box now."
   line
 
   # Auto-start Phase-2 prep (no student action). Prefer systemd oneshot; fall back to nohup.
@@ -223,7 +220,7 @@ finish() {
   if systemctl list-unit-files hardening-prepare-phase2.service >/dev/null 2>&1; then
     if as_root systemctl start hardening-prepare-phase2.service; then
       started=1
-      ok "Phase 2 prep started (systemctl hardening-prepare-phase2)"
+      ok "Phase 2 prep started"
     fi
   fi
   if [[ "$started" -eq 0 && -x /usr/local/sbin/hardening-prepare-phase2 ]]; then
@@ -234,9 +231,7 @@ finish() {
     fi
   fi
   if [[ "$started" -eq 0 ]]; then
-    warn "Could not auto-start Phase 2 prep — ask a mentor (sudo systemctl start hardening-prepare-phase2)."
-  else
-    say "  ${DIM}Log: /var/log/hardening-phase2-prep.log${N}"
+    warn "Could not auto-start Phase 2 prep — ask a mentor."
   fi
   printf 'phase1-done\n' | as_root tee "$CFG/phase" >/dev/null 2>&1 || true
 }
@@ -245,7 +240,6 @@ finish() {
 banner
 show_help
 if (( LEVEL > TOTAL )); then finish; exit 0; fi
-show_mission "${L_M[$((LEVEL - 1))]}"
 show_task
 
 trap 'printf "\n"; warn "Ctrl+C stopped the command, not the quest. Type quit to exit.";' INT
@@ -262,10 +256,10 @@ while true; do
     "" ) continue ;;
     help ) show_help ;;
     task ) show_task ;;
-    mission ) show_mission "${L_M[$((LEVEL - 1))]}" ;;
     hint ) show_hint ;;
+    scoreboard ) show_scoreboard ;;
     progress )
-      line; say "  Level $LEVEL / $TOTAL   Score $SCORE"; line ;;
+      line; say "  Drill $LEVEL / $TOTAL   Score $SCORE"; line ;;
     skip )
       warn "Skipped (0 pts)."; LEVEL=$((LEVEL + 1)); HINTS_USED=0; save
       if (( LEVEL > TOTAL )); then finish; exit 0; fi
@@ -277,7 +271,6 @@ while true; do
       # Subshell so command redirects cannot poison this loop's stdin.
       set +e
       ( eval "$cmd" ) <"$QUEST_IN"
-      set +e
       try_auto
       ;;
   esac

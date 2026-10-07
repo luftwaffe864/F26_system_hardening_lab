@@ -24,7 +24,24 @@ if [[ -f /etc/sudoers.d/90-hardening-lab ]]; then
   chmod 440 /etc/sudoers.d/90-hardening-lab
 fi
 
+# --- sudoers: a bad drop-in (sudoers drill) breaks sudo for everyone ----------
+if command -v visudo >/dev/null 2>&1 && ! visudo -c -q >/dev/null 2>&1; then
+  install -d -m 700 /root/dcig-broken-sudoers
+  for f in /etc/sudoers.d/*; do
+    [[ -f "$f" ]] || continue
+    [[ "$(basename "$f")" == 90-hardening-lab ]] && continue
+    visudo -c -q -f "$f" >/dev/null 2>&1 || mv -f "$f" /root/dcig-broken-sudoers/
+  done
+fi
+
 # --- SSH ---------------------------------------------------------------------
+# A typo in sshd_config (SSH drill) would stop sshd from (re)starting
+install -d -m 755 /run/sshd
+GOOD_SSHD=/usr/local/lib/hardening-lab/sshd_config.lab-good
+if [[ -f "$GOOD_SSHD" ]] && ! /usr/sbin/sshd -t >/dev/null 2>&1; then
+  cp -f /etc/ssh/sshd_config "/root/sshd_config.broken.$(date +%s)"
+  cp -f "$GOOD_SSHD" /etc/ssh/sshd_config
+fi
 if command -v systemctl >/dev/null 2>&1; then
   systemctl enable ssh 2>/dev/null || systemctl enable sshd 2>/dev/null || true
   systemctl start ssh 2>/dev/null || systemctl start sshd 2>/dev/null || true

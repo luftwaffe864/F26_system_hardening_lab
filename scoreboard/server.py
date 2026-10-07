@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-DCIG System Hardening — live CyberPatriot-style team scoreboard.
+DCIG System Hardening — live team scoreboard.
 
   export HARDENING_SECRET='change-me'
   export HARDENING_ADMIN='change-me-admin'

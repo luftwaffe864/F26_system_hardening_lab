@@ -121,7 +121,7 @@ function Test-Level([int]$idx, [string]$Answer) {
 function Show-Banner {
     Write-Host ''
     Write-Host '  HARDENING QUEST  -  Windows  -  ~10 min tool drill' -ForegroundColor Cyan
-    Write-Host '  Learn the tools for the CyberPatriot race. Type help any time.' -ForegroundColor DarkGray
+    Write-Host '  Learn the tools for the hardening race. Type help any time.' -ForegroundColor DarkGray
     Write-Host ''
 }
 
@@ -155,7 +155,7 @@ function Finish-Quest {
     Write-Host ''
     Write-Host ("  Windows tool drill complete. Score: {0}" -f $script:Score) -ForegroundColor Green
     Write-Host ''
-    Write-Host '  Auto-starting Phase 2 (CyberPatriot race prep)...' -ForegroundColor Yellow
+    Write-Host '  Auto-starting Phase 2 (hardening race prep)...' -ForegroundColor Yellow
     Write-Host '  Do not close this window yet - wait for the ready message.' -ForegroundColor DarkGray
     Write-Host ''
 
@@ -226,7 +226,7 @@ while ($true) {
         '^help$' { Show-Help; continue }
         '^task$' { Show-Task; continue }
         '^mission$' {
-            Write-Host '  Tool drill - learn commands for the CyberPatriot Phase 2 race.'
+            Write-Host '  Tool drill - learn commands for the Phase 2 hardening race.'
             continue
         }
         '^hint$' {

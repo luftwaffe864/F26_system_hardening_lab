@@ -1,6 +1,6 @@
 # DCIG System Hardening Lab (Fall · Oct 8 meeting)
 
-Guided quests on **Linux then Windows**, then a CyberPatriot-style **Phase 2** find-and-fix with a live **team** scoreboard.
+Guided quests on **Linux then Windows**, then a **Phase 2** find-and-fix hardening race with a live **team** scoreboard.
 
 Each student gets a paired box set on an **isolated `192.168.1.0/24`** (range ops pre-configure subnet and IPs):
 
@@ -16,11 +16,11 @@ Each student gets a paired box set on an **isolated `192.168.1.0/24`** (range op
 
 ## Student flow
 
-1. **Linux tool drill** (~10 min) → `hardening-quest` — learn commands, not a full IR story
+1. **Linux tool drill** (10 drills, ~15 min) → `hardening-quest` — learn commands, not a full IR story
 2. Drill ends → **Phase 2 prep auto-starts on Linux**; go to matching **Windows** box
-3. **Windows tool drill** (~10 min) → `hardening-quest`
+3. **Windows tool drill** (~10 min) → Desktop **Hardening Quest** icon
 4. Drill ends → **Phase 2 prep auto-starts** on Windows
-5. Mentors **open Phase 2** → CyberPatriot-style race (most of the meeting time)
+5. Mentors **open Phase 2** → hardening race (most of the meeting time)
 
 ```text
 jumpbox (.18) ──► Linux .10 ──~10m drill──► handoff + linux prepare_phase2

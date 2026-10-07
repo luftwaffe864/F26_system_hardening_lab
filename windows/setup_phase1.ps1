@@ -384,5 +384,5 @@ if ($scHit) {
 
 Say "Quest: Desktop 'Hardening Quest' icon  (or $LabRoot\bin\hardening-quest.cmd)"
 Say "Student login: student / $StudentPassword"
-Say 'Phase 1 complete. Quest finish auto-starts Phase 2 (CyberPatriot race).'
+Say 'Phase 1 complete. Quest finish auto-starts Phase 2 (hardening race).'
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # =============================================================================
 #  DCIG System Hardening — Linux Phase 2 prepare
-#  Auto-run after Linux quest. Plants easy → hard findings for CyberPatriot scoring.
+#  Auto-run after Linux quest. Plants easy → hard findings for machine-state scoring.
 # =============================================================================
 set -euo pipefail
 [[ $EUID -eq 0 ]] || { echo "Run as root"; exit 1; }
@@ -25,6 +25,10 @@ systemctl daemon-reload || true
 pkill -f 'listen9999.py' 2>/dev/null || true
 rm -rf /opt/PCCleaner /opt/SystemHealth 2>/dev/null || true
 rm -f /etc/cron.d/pccleaner
+# Phase-1 drill leftovers: drill user + root password should not leak into the race
+{ grep -l backupop /etc/sudoers.d/* 2>/dev/null || true; } | xargs -r rm -f
+userdel -r backupop >/dev/null 2>&1 || true
+passwd -l root >/dev/null 2>&1 || true
 
 log "planting Phase 2 findings (easy→hard) for team $TEAM"
 install -d -m 755 "$CACHE"
@@ -242,8 +246,8 @@ curl -sS -m 5 -X POST "$SCOREBOARD_URL/api/ready" \
 cat > /home/"$STUDENT"/PHASE2.txt <<EOF
 Phase 2 is ready on this Linux box (Team $TEAM).
 
-This is CyberPatriot-style scoring: fix the MACHINE. The score agent checks
-system state about every 20 seconds — you do NOT type answers.
+Fix the MACHINE. The score agent checks system state about every
+20 seconds — you do NOT type answers. Run  scoreboard  to see your points.
 
 Linux-focused categories (easy → hard):
   - Unused local accounts

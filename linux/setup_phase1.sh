@@ -81,6 +81,7 @@ install_game() {
   if [[ -f "$ROOT/../scripts/make_scoreboard_shortcut.sh" ]]; then
     install -m 755 "$ROOT/../scripts/make_scoreboard_shortcut.sh" "$LIB/make_scoreboard_shortcut.sh"
   fi
+  install -m 755 "$ROOT/scoreboard_cli.sh" /usr/local/bin/scoreboard
   # convenience symlink for prepare
   ln -sfn "$LIB/prepare_phase2.sh" /usr/local/sbin/hardening-prepare-phase2
 
@@ -148,6 +149,52 @@ plant_users() {
     useradd -m -s /bin/bash -c "Unused guest account" guestuser
   fi
   echo "guestuser:guest" | chpasswd
+
+  # Sudoers drill: backupop starts with NO sudo rights
+  if ! id backupop >/dev/null 2>&1; then
+    useradd -m -s /bin/bash -c "Backup operator" backupop
+  fi
+  echo "backupop:Backup2026!" | chpasswd
+  gpasswd -d backupop sudo >/dev/null 2>&1 || true
+  { grep -l backupop /etc/sudoers.d/* 2>/dev/null || true; } | xargs -r rm -f
+
+  # Root-lock drill: root gets a usable password
+  echo "root:Toor2026!" | chpasswd
+}
+
+plant_policy() {
+  # Password-policy drill: back to weak defaults (also keeps planted weak passwords settable)
+  sed -i 's/^[[:space:]]*PASS_MAX_DAYS.*/PASS_MAX_DAYS\t99999/' /etc/login.defs
+  if [[ -f /etc/security/pwquality.conf ]]; then
+    sed -i 's/^[[:space:]]*minlen[[:space:]]*=.*/# minlen = 8/' /etc/security/pwquality.conf
+  fi
+  sed -i -E 's/(pam_pwquality\.so.*) minlen=[0-9]+/\1/' /etc/pam.d/common-password 2>/dev/null || true
+}
+
+set_sshd_opt() {
+  local key="$1" val="$2" f=/etc/ssh/sshd_config
+  local re="^[[:space:]]*#?[[:space:]]*${key}[[:space:]]"
+  if grep -qiE "$re" "$f"; then
+    sed -i -E "0,/${re}/I{s/${re}.*/${key} ${val}/I}" "$f"
+  else
+    printf '%s %s\n' "$key" "$val" >> "$f"
+  fi
+}
+
+plant_ssh() {
+  [[ -f /etc/ssh/sshd_config ]] || return 0
+  # Drop-ins win over the main file; clear any that would mask the drill
+  rm -f /etc/ssh/sshd_config.d/99-lab-insecure.conf
+  { grep -liE '^[[:space:]]*(PermitRootLogin|MaxAuthTries|X11Forwarding)' /etc/ssh/sshd_config.d/*.conf 2>/dev/null || true; } |
+    { grep -v '50-dcig-lab-access.conf' || true; } | xargs -r rm -f
+  set_sshd_opt PermitRootLogin yes
+  set_sshd_opt MaxAuthTries 10
+  set_sshd_opt X11Forwarding yes
+  install -d -m 755 /run/sshd
+  if /usr/sbin/sshd -t; then
+    cp -f /etc/ssh/sshd_config "$LIB/sshd_config.lab-good"
+    systemctl reload ssh 2>/dev/null || systemctl reload sshd 2>/dev/null || true
+  fi
 }
 
 plant_files() {
@@ -162,8 +209,8 @@ surface and harden what you can. When you finish, go to your matching Windows bo
 
 Password reuse note found on sticky pad: tempadmin also uses Password1 on email.
 
-Lab note: SSH (port 22) stays allowed even if you enable ufw. Do not rename or
-remove the student account — mentors can reset it, but you will lose time.
+Lab note: do not remove the student account or block port 22 — mentors can
+reset access, but you will lose time.
 EOF
   chown "$STUDENT:$STUDENT" /home/"$STUDENT"/briefing.txt
 
@@ -225,20 +272,21 @@ EOF
 }
 
 plant_firewall() {
-  if command -v ufw >/dev/null 2>&1; then
-    ufw --force disable >/dev/null 2>&1 || true
-    ufw --force reset >/dev/null 2>&1 || true
-  else
+  if ! command -v ufw >/dev/null 2>&1; then
     apt-get update -qq >/dev/null 2>&1 || true
     DEBIAN_FRONTEND=noninteractive apt-get install -y -qq ufw >/dev/null 2>&1 || true
-    ufw --force disable >/dev/null 2>&1 || true
   fi
+  ufw --force disable >/dev/null 2>&1 || true
+  ufw --force reset >/dev/null 2>&1 || true
+  # reset restores deny-incoming; the drill needs students to set it themselves
+  ufw default allow incoming >/dev/null 2>&1 || true
 }
 
 packages() {
   export DEBIAN_FRONTEND=noninteractive
   apt-get update -qq >/dev/null 2>&1 || true
-  apt-get install -y -qq curl python3 ufw cron procps psmisc iproute2 >/dev/null 2>&1 || true
+  apt-get install -y -qq curl python3 ufw cron procps psmisc iproute2 \
+    openssh-server libpam-pwquality >/dev/null 2>&1 || true
 }
 
 main() {
@@ -247,10 +295,12 @@ main() {
   install_dirs
   install_student
   install_game
+  plant_policy
   plant_users
   plant_files
   plant_service_and_process
   plant_firewall
+  plant_ssh
   install_access_guard
   # Desktop shortcut → open scoreboard in browser (double-click)
   SHORTCUT_SRC="$ROOT/../scripts/make_scoreboard_shortcut.sh"
@@ -272,7 +322,7 @@ EOF
     chown -R "$STUDENT:$STUDENT" "/home/$STUDENT/Desktop"
   fi
   log "done. Student: $STUDENT / $STUDENT_PW"
-  log "Scoreboard shortcut on Desktop (DCIG Scoreboard.html) -> $SCOREBOARD_URL"
+  log "Scoreboard: Desktop launcher + 'scoreboard' command -> $SCOREBOARD_URL"
   log "Start quest: sudo -u $STUDENT -i hardening-quest"
   if [[ "$SWITCH" -eq 1 && -t 0 ]]; then
     exec su - "$STUDENT" -c hardening-quest

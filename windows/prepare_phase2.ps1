@@ -218,7 +218,7 @@ try {
 @"
 Phase 2 is ready on this Windows box (Team $Team).
 
-CyberPatriot-style scoring: fix the MACHINE. The score agent checks system
+Fix the MACHINE. The score agent checks system
 state about once a minute - you do NOT type answers into a prompt.
 
 Windows-focused categories (easy → hard):
