@@ -36,7 +36,7 @@ $ScoreboardUrl = if (Test-Path (Join-Path $Cfg 'scoreboard_url.txt')) {
     (Get-Content (Join-Path $Cfg 'scoreboard_url.txt') -Raw).Trim()
 } else { 'http://127.0.0.1:8080' }
 
-Say "preparing Phase 2 findings (Windows-native, easy→hard) for Team $Team"
+Say "preparing Phase 2 findings (Windows-native, easy->hard) for Team $Team"
 
 # Ensure plant accounts can be created if local policy is strict
 try {
@@ -69,6 +69,13 @@ Remove-NetFirewallRule -DisplayName 'Remote Admin Support' -EA SilentlyContinue
 Remove-Item 'C:\ProgramData\SysHealth' -Recurse -Force -EA SilentlyContinue
 Remove-Item 'C:\Program Files\PCOptimizer Pro' -Recurse -Force -EA SilentlyContinue
 try { Set-MpPreference -DisableRealtimeMonitoring $false -EA SilentlyContinue } catch {}
+cmd /c "sc.exe stop SysCacheSvc >nul 2>&1"
+cmd /c "sc.exe delete SysCacheSvc >nul 2>&1"
+Remove-Item 'C:\ProgramData\SysCache' -Recurse -Force -EA SilentlyContinue
+# Unscored Phase-1 account leftovers would clutter the race; authorized staff stay
+foreach ($u in @('tempadmin', 'guestuser', 'jmiller')) { Remove-LocalUser -Name $u -EA SilentlyContinue }
+Remove-LocalGroupMember -Group 'Administrators' -Member 'bjones' -EA SilentlyContinue
+Remove-Item (Join-Path $LabRoot 'hr_memo.txt') -Force -EA SilentlyContinue
 
 # ========== EASY ==========
 # W2-02 Guest enabled (Windows built-in weak account)
@@ -220,8 +227,9 @@ Phase 2 is ready on this Windows box (Team $Team).
 
 Fix the MACHINE. The score agent checks system
 state about once a minute - you do NOT type answers into a prompt.
+Authorized accounts are still listed in C:\HardeningLab\authorized_users.txt.
 
-Windows-focused categories (easy → hard):
+Windows-focused categories (easy -> hard):
   - Built-in / leftover local accounts
   - Accessibility / Image File Execution Options abuse
   - Overly open SMB shares and file ACLs

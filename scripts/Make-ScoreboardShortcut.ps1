@@ -1,77 +1,61 @@
 <#
 .SYNOPSIS
-  Create Desktop shortcuts that open the hardening scoreboard in a browser.
+  Create a Desktop shortcut that opens the hardening scoreboard in a browser.
+  On lab boxes it launches C:\HardeningLab\Open-Scoreboard.ps1 (picks Edge/Chrome/
+  Firefox, or IE11 -> /lite). Elsewhere it falls back to a plain .url file.
 .EXAMPLE
-  .\Make-ScoreboardShortcut.ps1 -Url 'http://192.168.1.7:8080/'
-  .\Make-ScoreboardShortcut.ps1 -Url 'http://192.168.1.7:8080/' -AlsoUserDesktop student
+  .\Make-ScoreboardShortcut.ps1 -Url 'http://172.31.31.2:8080/'
+  .\Make-ScoreboardShortcut.ps1 -Url 'http://172.31.31.2:8080/' -AlsoUserDesktop student
 #>
 [CmdletBinding()]
 param(
     [Parameter(Mandatory = $true)]
     [string]$Url,
-    [string]$AlsoUserDesktop = ''
+    [string]$AlsoUserDesktop = '',
+    [string]$LabRoot = 'C:\HardeningLab'
 )
 
 if ($Url -notmatch '/$') { $Url = "$Url/" }
+$opener = Join-Path $LabRoot 'Open-Scoreboard.ps1'
 
 function Write-ShortcutFiles([string]$DesktopDir) {
     if (-not $DesktopDir) { return }
     New-Item -ItemType Directory -Force -Path $DesktopDir | Out-Null
 
-    # Internet Shortcut — double-click opens default browser
-    $urlFile = Join-Path $DesktopDir 'DCIG Scoreboard.url'
-    @"
-[InternetShortcut]
-URL=$Url
-IconIndex=0
-"@ | Set-Content -Path $urlFile -Encoding ASCII
+    # Older versions left three icons, and the .lnk pointed straight at a URL (broken)
+    foreach ($old in @('DCIG Scoreboard.url', 'DCIG Scoreboard.html', 'DCIG Scoreboard.lnk')) {
+        Remove-Item (Join-Path $DesktopDir $old) -Force -EA SilentlyContinue
+    }
 
-    # HTML redirect fallback (also double-clickable)
-    $htmlFile = Join-Path $DesktopDir 'DCIG Scoreboard.html'
-    @"
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="utf-8"/>
-  <meta http-equiv="refresh" content="0; url=$Url"/>
-  <title>DCIG Hardening Scoreboard</title>
-  <script>window.location.replace("$Url");</script>
-</head>
-<body style="font-family:Segoe UI,sans-serif;background:#0b1220;color:#e8eefc;padding:2rem">
-  <h1>Opening scoreboard…</h1>
-  <p>If nothing happens, <a href="$Url" style="color:#3dd6c6">click here</a>.</p>
-</body>
-</html>
-"@ | Set-Content -Path $htmlFile -Encoding UTF8
+    if (Test-Path $opener) {
+        try {
+            $w = New-Object -ComObject WScript.Shell
+            $s = $w.CreateShortcut((Join-Path $DesktopDir 'DCIG Scoreboard.lnk'))
+            $s.TargetPath = "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe"
+            $s.Arguments = "-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$opener`""
+            $s.WorkingDirectory = $LabRoot
+            $s.WindowStyle = 7
+            $s.IconLocation = "$env:ProgramFiles\Internet Explorer\iexplore.exe,0"
+            $s.Description = 'DCIG Hardening live scoreboard'
+            $s.Save()
+            return
+        } catch { }
+    }
 
-    # Optional .lnk via WScript if available (nicer icon)
-    try {
-        $lnkPath = Join-Path $DesktopDir 'DCIG Scoreboard.lnk'
-        $w = New-Object -ComObject WScript.Shell
-        $s = $w.CreateShortcut($lnkPath)
-        $s.TargetPath = $Url
-        $s.Description = 'DCIG Hardening live scoreboard'
-        $s.Save()
-    } catch { }
+    "[InternetShortcut]`r`nURL=$Url`r`n" |
+        Set-Content -Path (Join-Path $DesktopDir 'DCIG Scoreboard.url') -Encoding ASCII
 }
 
-# Public Desktop (all users)
 $public = Join-Path $env:PUBLIC 'Desktop'
-if (Test-Path (Split-Path $public -Parent)) {
-    Write-ShortcutFiles $public
-}
+if (Test-Path (Split-Path $public -Parent)) { Write-ShortcutFiles $public }
 
-# Current user Desktop
 $userDesk = [Environment]::GetFolderPath('Desktop')
 if ($userDesk) { Write-ShortcutFiles $userDesk }
 
-# Optional named user (e.g. student)
 if ($AlsoUserDesktop) {
     $other = "C:\Users\$AlsoUserDesktop\Desktop"
     Write-ShortcutFiles $other
-    try {
-        icacls $other /grant "${AlsoUserDesktop}:(OI)(CI)(M)" | Out-Null
-    } catch {}
+    try { icacls $other /grant "${AlsoUserDesktop}:(OI)(CI)(M)" | Out-Null } catch {}
 }
 
-Write-Host "[shortcut] scoreboard launchers created for $Url"
+Write-Host "[shortcut] scoreboard launcher created for $Url"

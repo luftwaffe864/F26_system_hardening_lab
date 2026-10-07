@@ -129,10 +129,12 @@ if ($Uninstall) {
     Get-Process -Name 'health_update' -EA SilentlyContinue | Stop-Process -Force -EA SilentlyContinue
     Remove-ItemProperty -Path $RunKey -Name 'SysHealthUpdate' -EA SilentlyContinue
     Remove-NetFirewallRule -DisplayName 'Remote Admin Support' -EA SilentlyContinue
-    foreach ($d in @($Rogue, $Bloat, $LabRoot)) {
+    cmd /c "sc.exe stop SysCacheSvc >nul 2>&1"
+    cmd /c "sc.exe delete SysCacheSvc >nul 2>&1"
+    foreach ($d in @($Rogue, $Bloat, $LabRoot, 'C:\ProgramData\SysCache')) {
         if (Test-Path $d) { Remove-Item $d -Recurse -Force -EA SilentlyContinue }
     }
-    foreach ($u in @('tempadmin','guestuser')) {
+    foreach ($u in @('tempadmin','guestuser','jmiller','asmith','bjones','cwong')) {
         Remove-LocalUser -Name $u -EA SilentlyContinue
     }
     Say 'Uninstall done (student account left in place).'
@@ -170,7 +172,8 @@ Say 'reset quest progress + Phase-2 flags (ready for a fresh Phase 1 run)'
 
 # copy scripts next to lab root if present beside this file
 $here = Split-Path -Parent $MyInvocation.MyCommand.Path
-foreach ($f in @('hardening_quest.ps1','prepare_phase2.ps1','score_agent.ps1','Ensure-LabAccess.ps1')) {
+foreach ($f in @('hardening_quest.ps1','prepare_phase2.ps1','score_agent.ps1','Ensure-LabAccess.ps1',
+                 'Show-Scoreboard.ps1','Open-Scoreboard.ps1')) {
     $src = Join-Path $here $f
     if (Test-Path $src) {
         Copy-Item $src (Join-Path $LabRoot $f) -Force
@@ -199,17 +202,71 @@ cmd /c "net user student /passwordchg:no" | Out-Null
 Add-LocalGroupMember -Group 'Administrators' -Member 'student' -EA SilentlyContinue
 Say 'student account ready (Administrators; password reset by lab if changed)'
 
-# bad admin + unused user (weak passwords - policy relaxed above)
+# Range/ops accounts that existed before the lab: listed as authorized so students leave them alone.
+# Lab-planted names (Phase 1 + Phase 2) and built-ins (SID -500/-501/-503/-504) are excluded.
+$LabAccounts = @('student','tempadmin','guestuser','jmiller','asmith','bjones','cwong','tempvendor','contractor')
+$adminSet = @(cmd /c 'net localgroup Administrators' 2>$null | ForEach-Object { $_.Trim().Split('\')[-1].ToLower() })
+$rangeAdmins = @(); $rangeUsers = @()
+foreach ($lu in (Get-LocalUser)) {
+    if ($LabAccounts -contains $lu.Name.ToLower()) { continue }
+    if ($lu.SID.Value -match '-(500|501|503|504)$') { continue }
+    if (-not $lu.Enabled) { continue }
+    if ($adminSet -contains $lu.Name.ToLower()) { $rangeAdmins += $lu.Name } else { $rangeUsers += $lu.Name }
+}
+
+# Account drills: authorized staff, one wrongly promoted to admin, two unapproved
+# accounts, and a fired employee who was never deactivated.
 foreach ($u in @(
-    @{ Name='tempadmin'; Pass='Password1'; Fallback='Password1!Aa'; Full='Temp Admin - REMOVE'; Admin=$true },
-    @{ Name='guestuser'; Pass='guest';     Fallback='GuestUser1!';  Full='Unused guest';        Admin=$false }
+    @{ Name='asmith';    Pass='Ledger2026!'; Fallback='Ledger2026!Aa'; Full='Alice Smith';         Desc='Accounting'; Admin=$false },
+    @{ Name='bjones';    Pass='Sales2026!';  Fallback='Sales2026!Aa';  Full='Ben Jones';           Desc='Sales';      Admin=$true },
+    @{ Name='cwong';     Pass='Front2026!';  Fallback='Front2026!Aa';  Full='Carol Wong';          Desc='Front desk'; Admin=$false },
+    @{ Name='jmiller';   Pass='Summer2026!'; Fallback='Summer2026!Aa'; Full='Jordan Miller';       Desc='Sales';      Admin=$false },
+    @{ Name='tempadmin'; Pass='Password1';   Fallback='Password1!Aa';  Full='Temp Admin';          Desc='';           Admin=$true },
+    @{ Name='guestuser'; Pass='guest';       Fallback='GuestUser1!';   Full='Guest user';          Desc='';           Admin=$false }
 )) {
     if (New-LabLocalUser -Name $u.Name -Password $u.Pass -FullName $u.Full -FallbackPassword $u.Fallback) {
+        Enable-LocalUser -Name $u.Name -EA SilentlyContinue
+        if ($u.Desc) { Set-LocalUser -Name $u.Name -Description $u.Desc -EA SilentlyContinue }
+        Add-LocalGroupMember -Group 'Users' -Member $u.Name -EA SilentlyContinue
         if ($u.Admin) { Add-LocalGroupMember -Group 'Administrators' -Member $u.Name -EA SilentlyContinue }
-        else { Add-LocalGroupMember -Group 'Users' -Member $u.Name -EA SilentlyContinue }
+        else { Remove-LocalGroupMember -Group 'Administrators' -Member $u.Name -EA SilentlyContinue }
     }
 }
-Say 'planted tempadmin + guestuser (best-effort)'
+Say 'planted account drills (asmith/bjones/cwong authorized, tempadmin/guestuser/jmiller not)'
+
+# Authorized list: who SHOULD exist. Unauthorized accounts are deliberately not named.
+$adminLines = @('  Administrator    built-in - do not delete', '  student          lab account - do not change')
+$adminLines += $rangeAdmins | ForEach-Object { '  {0,-16} range management - do not change' -f $_ }
+$userLines = @(
+    '  asmith           Alice Smith - Accounting',
+    '  bjones           Ben Jones - Sales',
+    '  cwong            Carol Wong - Front desk'
+)
+$userLines += $rangeUsers | ForEach-Object { '  {0,-16} range management - do not change' -f $_ }
+$auth = @"
+AUTHORIZED ACCOUNTS - $env:COMPUTERNAME (Team $Team)
+Approved by IT. Any account not listed here is NOT authorized.
+
+Administrators
+$($adminLines -join "`r`n")
+
+Standard users (must NOT be administrators)
+$($userLines -join "`r`n")
+
+Built-in Windows accounts (Administrator, Guest, DefaultAccount,
+WDAGUtilityAccount) are system accounts - do not delete them.
+"@
+Set-Content -Path (Join-Path $LabRoot 'authorized_users.txt') -Value $auth -Encoding ASCII
+
+$memo = @"
+HR NOTICE - account action required
+
+Employee:  Jordan Miller (username: jmiller)
+Status:    Terminated - last day 2026-09-30
+Action:    Disable the account now. Do NOT delete it - Legal needs it
+           kept for 90 days.
+"@
+Set-Content -Path (Join-Path $LabRoot 'hr_memo.txt') -Value $memo -Encoding ASCII
 
 # briefing
 $brief = @"
@@ -217,12 +274,10 @@ DCIG System Hardening - Windows box
 Hostname: $env:COMPUTERNAME
 Team: $Team
 
-You should have finished the Linux quest first. Harden this Windows box the same way:
-map the attack surface, then fix users, startup, firewall, and Defender.
+Authorized accounts: C:\HardeningLab\authorized_users.txt
+HR notices:          C:\HardeningLab\hr_memo.txt
 
-Sticky note: tempadmin password is Password1 (reused elsewhere - don't do that).
-
-Lab note: RDP stays enabled (port 3389). Do not rename or delete the student account.
+Lab note: keep RDP (port 3389) working and do not change the student account.
 "@
 Set-Content -Path (Join-Path $LabRoot 'briefing.txt') -Value $brief -Encoding ASCII
 
@@ -257,6 +312,23 @@ Say 'planted startup persistence SysHealthUpdate'
 Start-Process -FilePath $rogueExe `
     -ArgumentList '-WindowStyle','Hidden','-ExecutionPolicy','Bypass','-File',$burn `
     -WindowStyle Hidden -EA SilentlyContinue
+
+# rogue auto-start service (PowerShell loop; SCM never sees it "start", which is fine for the drill)
+$svcDir = 'C:\ProgramData\SysCache'
+New-Item -ItemType Directory -Force -Path $svcDir | Out-Null
+$svcPs1 = Join-Path $svcDir 'cache.ps1'
+Set-Content $svcPs1 -Value 'while ($true) { Start-Sleep 60 }' -Encoding ASCII
+cmd /c "sc.exe stop SysCacheSvc >nul 2>&1"
+cmd /c "sc.exe delete SysCacheSvc >nul 2>&1"
+Start-Sleep -Milliseconds 500
+try {
+    New-Service -Name 'SysCacheSvc' -DisplayName 'System Cache Service' -StartupType Automatic `
+        -BinaryPathName "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$svcPs1`"" `
+        -EA Stop | Out-Null
+    Say 'planted rogue service SysCacheSvc'
+} catch {
+    Warn "could not create SysCacheSvc (close services.msc and re-run): $($_.Exception.Message)"
+}
 
 # firewall rule
 New-NetFirewallRule -DisplayName 'Remote Admin Support' -Direction Inbound `
@@ -364,14 +436,20 @@ if (Test-Path $ensurePs1) {
     Say 'installed DCIGEnsureLabAccess (RDP + student safety net every 3 min)'
 }
 
-# Desktop scoreboard shortcut (double-click → browser)
+# IE Enhanced Security Configuration blocks the scoreboard in IE11 (admins + users; next logon)
+foreach ($escId in @('{A509B1A7-37EF-4b3f-8CFC-4F3A74704073}', '{A509B1A8-37EF-4b3f-8CFC-4F3A74704073}')) {
+    $escKey = "HKLM:\SOFTWARE\Microsoft\Active Setup\Installed Components\$escId"
+    if (Test-Path $escKey) { Set-ItemProperty -Path $escKey -Name 'IsInstalled' -Value 0 -EA SilentlyContinue }
+}
+
+# Desktop scoreboard shortcut (double-click -> browser)
 $scCandidates = @(
     (Join-Path (Split-Path $here -Parent) 'scripts\Make-ScoreboardShortcut.ps1'),
     (Join-Path $LabRoot 'Make-ScoreboardShortcut.ps1')
 )
 $scHit = $scCandidates | Where-Object { Test-Path $_ } | Select-Object -First 1
 if ($scHit) {
-    & $scHit -Url $ScoreboardUrl -AlsoUserDesktop 'student'
+    & $scHit -Url $ScoreboardUrl -AlsoUserDesktop 'student' -LabRoot $LabRoot
     Say "scoreboard Desktop shortcut -> $ScoreboardUrl"
 } else {
     $urlClean = $ScoreboardUrl.TrimEnd('/') + '/'

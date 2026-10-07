@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import html
 import json
 import os
 import threading
@@ -195,6 +196,38 @@ def _require_admin() -> Response | None:
 @app.get("/")
 def index():
     return send_from_directory(app.static_folder, "index.html")
+
+
+@app.get("/lite")
+def lite():
+    """Server-rendered board for IE11 (Server 2019 default browser): no JavaScript."""
+    with _lock:
+        snap = _snapshot()
+    if snap["frozen"]:
+        state = "FROZEN"
+    elif snap["phase2_open"]:
+        state = "OPEN"
+    else:
+        state = "not open yet"
+    rows = "".join(
+        "<tr><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td><b>{}</b></td></tr>".format(
+            r["rank"], html.escape(r["name"]), r["linux"], r["windows"], r["total"]
+        )
+        for r in sorted(snap["teams"], key=lambda r: r["rank"])
+    )
+    page = (
+        '<!DOCTYPE html><html><head><meta charset="utf-8">'
+        '<meta http-equiv="X-UA-Compatible" content="IE=edge">'
+        '<meta http-equiv="refresh" content="15"><title>DCIG Scoreboard</title>'
+        "<style>body{font-family:Segoe UI,Arial,sans-serif;background:#0b1220;color:#e8eefc;margin:24px}"
+        "table{border-collapse:collapse}th,td{padding:4px 16px;border-bottom:1px solid #24304a;text-align:left}"
+        "th{color:#8b9bb8}</style></head><body>"
+        "<h1>DCIG Hardening Scoreboard</h1>"
+        f"<p>Phase 2: <b>{state}</b> &middot; max {snap['max_points']} points &middot; refreshes every 15 s</p>"
+        "<table><tr><th>#</th><th>Team</th><th>Linux</th><th>Windows</th><th>Total</th></tr>"
+        f"{rows}</table></body></html>"
+    )
+    return Response(page, mimetype="text/html")
 
 
 @app.get("/api/status")

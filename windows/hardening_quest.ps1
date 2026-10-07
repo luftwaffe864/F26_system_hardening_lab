@@ -1,7 +1,7 @@
 <#
 ================================================================================
  DCIG System Hardening - Windows Quest (Phase 1)
- Short ~10 min tool drill, then auto Phase-2 prep.
+ Short tool drills, then auto Phase-2 prep.
 
    powershell.exe -ExecutionPolicy Bypass -File C:\HardeningLab\hardening_quest.ps1
 ================================================================================
@@ -32,6 +32,7 @@ $Cfg     = Join-Path $LabRoot 'config'
 $StateDir = Join-Path $env:LOCALAPPDATA 'HardeningQuest'
 $Progress = Join-Path $StateDir 'progress.txt'
 $ScoreFile = Join-Path $StateDir 'score.txt'
+$RunKey = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run'
 New-Item -ItemType Directory -Force -Path $StateDir | Out-Null
 
 $script:Level = 1
@@ -52,92 +53,152 @@ function Get-Team {
     if ($env:COMPUTERNAME -match '(\d+)$') { return ('{0:D2}' -f [int]$Matches[1]) }
     return '00'
 }
+$TeamNN = Get-Team
 
-# Short tool drill - teach command, use once, move on (~10 min)
+# Get-LocalGroupMember throws on orphaned SIDs on some Server 2019 builds; net.exe does not.
+function Get-AdminNames {
+    $out = cmd /c 'net localgroup Administrators' 2>$null
+    $inList = $false
+    $names = @()
+    foreach ($l in $out) {
+        if ($l -match '^-{5,}') { $inList = $true; continue }
+        if (-not $inList) { continue }
+        if ($l -match '^The command completed') { break }
+        if ($l.Trim()) { $names += $l.Trim().Split('\')[-1].ToLower() }
+    }
+    return $names
+}
+
+# Task = tool syntax + goal only. Answers live in the LAST hint.
 $Levels = @(
     @{
-        M=1; Title='Get-Content - read a file'
-        Task="Tool:  Get-Content <path>`nRun:   Get-Content C:\HardeningLab\briefing.txt`nSubmit your two-digit team number.  answer <NN>"
-        Why='You will read notes and configs in Phase 2.'
-        Type='answer'; Hints=@('Get-Content C:\HardeningLab\briefing.txt','Look for Team:')
+        Title='Get-Content - read a file'
+        Task="Tool  Get-Content <path>`nTask  Read the briefing in C:\HardeningLab.  answer <team number>"
+        Type='answer'
+        Hints=@('Get-ChildItem C:\HardeningLab', 'Get-Content C:\HardeningLab\briefing.txt', "answer $TeamNN")
     },
     @{
-        M=1; Title='Get-LocalGroupMember - who is admin?'
-        Task="Tool:  Get-LocalGroupMember -Group Administrators`nRun that. Which extra user should NOT be an admin?  answer <username>"
-        Why='Phase 2: hunt unexpected Administrators the same way.'
-        Type='answer'; Hints=@('Get-LocalGroupMember Administrators','tempadmin')
+        Title='Administrators - who should be admin?'
+        Task="Tool  Get-LocalGroupMember Administrators`n      Remove-LocalGroupMember Administrators -Member <user>`nTask  Make the Administrators group match C:\HardeningLab\authorized_users.txt."
+        Type='auto'
+        Hints=@('Get-Content C:\HardeningLab\authorized_users.txt', 'Two members are admins but should not be - one is an authorized standard user, keep that account', 'Remove-LocalGroupMember Administrators -Member tempadmin,bjones')
     },
     @{
-        M=1; Title='Run key - startup persistence'
-        Task="Tool:  Get-ItemProperty HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run`nSubmit the suspicious value NAME.  answer <name>"
-        Why='Run keys are a classic Windows persistence check (Task Manager > Startup also works).'
-        Type='answer'; Hints=@('Get-ItemProperty ...\Run','SysHealthUpdate')
+        Title='Get-LocalUser - unauthorized accounts'
+        Task="Tool  Get-LocalUser`n      Remove-LocalUser <user>`nTask  Delete accounts that are not on the authorized list (leave built-in accounts)."
+        Type='auto'
+        Hints=@('Compare Get-LocalUser with authorized_users.txt', 'Two accounts were never approved; one of them looks like a guest', 'Remove-LocalUser guestuser,tempadmin')
     },
     @{
-        M=1; Title='Remove-ItemProperty - delete a Run key'
-        Task="Tool:  Remove-ItemProperty -Path HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run -Name <Name>`nPractice:`n  Remove-ItemProperty -Path HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run -Name SysHealthUpdate`nAuto-passes when that value is gone."
-        Why='Practice removing bad Run values - Phase 2 leans on other Windows controls, but this skill still matters.'
-        Type='auto'; Hints=@('Remove-ItemProperty ... -Name SysHealthUpdate')
+        Title='Disable-LocalUser - former employee'
+        Task="Tool  Get-LocalUser <user> | Select-Object Name,Enabled,Description`n      Disable-LocalUser <user>`nTask  Someone left the company but can still log in. Follow C:\HardeningLab\hr_memo.txt."
+        Type='auto'
+        Hints=@('Get-Content C:\HardeningLab\hr_memo.txt', 'The memo says keep the account for records - disable it, do not delete it', 'Disable-LocalUser jmiller')
     },
     @{
-        M=1; Title='Firewall - find and remove a bad rule'
-        Task="Tools:  Get-NetFirewallRule -DisplayName '*Support*'`n        Remove-NetFirewallRule -DisplayName 'Remote Admin Support'`n   Or:  wf.msc`nRemove/disable 'Remote Admin Support' only - leave 'DCIG Lab RDP Access' alone. Auto-passes when gone or disabled."
-        Why='Phase 2 may plant inbound allows - same cmdlets / wf.msc.'
-        Type='auto'; Hints=@('Remove-NetFirewallRule -DisplayName "Remote Admin Support"')
+        Title='Run key - startup persistence'
+        Task="Tool  Get-ItemProperty HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run`n      Remove-ItemProperty -Path <key> -Name <value>`nTask  Something launches a fake updater at every login. Remove that startup entry."
+        Type='auto'
+        Hints=@('Get-ItemProperty HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run', 'The odd value points into C:\ProgramData\SysHealth', 'Remove-ItemProperty -Path HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run -Name SysHealthUpdate')
     },
     @{
-        M=1; Title='Defender - real-time protection ON'
-        Task="Tools:  Get-MpPreference`n        Set-MpPreference -DisableRealtimeMonitoring `$false`n   Or:  Windows Security > Virus and threat protection`nTurn real-time ON. Auto-passes when monitoring is enabled."
-        Why='Firewall is not antivirus. Phase 2 scores Defender being on.'
-        Type='auto'; Hints=@('Set-MpPreference -DisableRealtimeMonitoring $false','Windows Security GUI')
+        Title='Services - rogue service'
+        Task="Tool  Get-CimInstance Win32_Service | Select-Object Name,StartMode,PathName`n      Stop-Service <name> -Force`n      Set-Service <name> -StartupType Disabled`nTask  A fake service starts from C:\ProgramData. Stop it and keep it off after reboot."
+        Type='auto'
+        Hints=@('Get-CimInstance Win32_Service | Where-Object PathName -like "*powershell*" | Select-Object Name,PathName', 'The service is SysCacheSvc', 'Stop-Service SysCacheSvc -Force; Set-Service SysCacheSvc -StartupType Disabled')
+    },
+    @{
+        Title='Firewall - remove a bad inbound rule'
+        Task="Tool  Get-NetFirewallRule -Direction Inbound -Enabled True | Select-Object DisplayName`n      Remove-NetFirewallRule -DisplayName <name>`nTask  Remove the rule that opens a remote-support port. Do not touch 'DCIG Lab RDP Access'."
+        Type='auto'
+        Hints=@("Get-NetFirewallRule -DisplayName '*Support*'", 'The rule opens TCP 5555', 'Remove-NetFirewallRule -DisplayName "Remote Admin Support"')
+    },
+    @{
+        Title='Defender - real-time protection'
+        Task="Tool  Get-MpPreference | Select-Object DisableRealtimeMonitoring`n      Set-MpPreference -DisableRealtimeMonitoring <bool>`nTask  Turn Defender real-time protection back on."
+        Type='auto'
+        Hints=@('Get-MpPreference | Select-Object DisableRealtimeMonitoring', 'True means protection is OFF', 'Set-MpPreference -DisableRealtimeMonitoring $false')
     }
 )
 
 function Test-Level([int]$idx, [string]$Answer) {
-    $n = $idx + 1
-    switch ($n) {
-        1 { return ($Answer.Trim() -eq (Get-Team)) }
-        2 { return ($Answer.Trim().ToLower() -eq 'tempadmin') }
-        3 { return ($Answer.Trim() -eq 'SysHealthUpdate') }
+    switch ($idx + 1) {
+        1 { return ($Answer.Trim() -eq $TeamNN) }
+        2 {
+            $a = Get-AdminNames
+            return (($a -notcontains 'tempadmin') -and ($a -notcontains 'bjones') -and
+                    [bool](Get-LocalUser -Name 'bjones' -EA SilentlyContinue))
+        }
+        3 {
+            foreach ($u in @('guestuser', 'tempadmin')) {
+                if (Get-LocalUser -Name $u -EA SilentlyContinue) { return $false }
+            }
+            foreach ($u in @('asmith', 'bjones', 'cwong')) {
+                if (-not (Get-LocalUser -Name $u -EA SilentlyContinue)) { return $false }
+            }
+            return $true
+        }
         4 {
-            $v = (Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run' -EA SilentlyContinue).SysHealthUpdate
-            return [string]::IsNullOrEmpty($v)
+            $u = Get-LocalUser -Name 'jmiller' -EA SilentlyContinue
+            return ((-not $u) -or (-not $u.Enabled))
         }
         5 {
-            $r = Get-NetFirewallRule -DisplayName 'Remote Admin Support' -EA SilentlyContinue
-            if (-not $r) { return $true }
-            return (($r | Where-Object { $_.Enabled -eq 'True' }).Count -eq 0)
+            $v = (Get-ItemProperty $RunKey -EA SilentlyContinue).SysHealthUpdate
+            return [string]::IsNullOrEmpty($v)
         }
         6 {
-            try {
-                $p = Get-MpPreference
-                return (-not $p.DisableRealtimeMonitoring)
-            } catch { return $false }
+            $s = Get-Service -Name 'SysCacheSvc' -EA SilentlyContinue
+            return ((-not $s) -or ($s.StartType -eq 'Disabled' -and $s.Status -ne 'Running'))
+        }
+        7 {
+            $r = Get-NetFirewallRule -DisplayName 'Remote Admin Support' -EA SilentlyContinue
+            if (-not $r) { return $true }
+            return (@($r | Where-Object { $_.Enabled -eq 'True' }).Count -eq 0)
+        }
+        8 {
+            try { return (-not (Get-MpPreference).DisableRealtimeMonitoring) } catch { return $false }
         }
         default { return $false }
     }
 }
 
+function Show-Line { Write-Host ('-' * 56) -ForegroundColor DarkGray }
+
 function Show-Banner {
     Write-Host ''
-    Write-Host '  HARDENING QUEST  -  Windows  -  ~10 min tool drill' -ForegroundColor Cyan
-    Write-Host '  Learn the tools for the hardening race. Type help any time.' -ForegroundColor DarkGray
+    Write-Host '  HARDENING QUEST - Windows' -ForegroundColor Cyan
+    Write-Host ("  {0} short drills. Type help for commands." -f $Levels.Count) -ForegroundColor DarkGray
     Write-Host ''
 }
 
 function Show-Help {
-    Write-Host '  task  mission  hint  answer X  skip  progress  quit' -ForegroundColor Yellow
-    Write-Host '  Or run real PowerShell commands at the prompt.' -ForegroundColor DarkGray
+    Show-Line
+    Write-Host '  task  hint  answer X  skip  progress  scoreboard  quit' -ForegroundColor Yellow
+    Write-Host '  Anything else runs as a normal PowerShell command.' -ForegroundColor DarkGray
+    Show-Line
 }
 
 function Show-Task {
     if ($script:Level -gt $Levels.Count) { return }
     $L = $Levels[$script:Level - 1]
-    Write-Host ('-' * 56) -ForegroundColor DarkGray
-    Write-Host ("  DRILL - {0}" -f $L.Title) -ForegroundColor White
-    Write-Host ("  {0}" -f $L.Task)
-    Write-Host ("  Why: {0}" -f $L.Why) -ForegroundColor DarkGray
-    Write-Host ('-' * 56) -ForegroundColor DarkGray
+    Show-Line
+    Write-Host ("DRILL {0}/{1} - {2}" -f $script:Level, $Levels.Count, $L.Title) -ForegroundColor White
+    foreach ($t in ($L.Task -split "`n")) { Write-Host ("  {0}" -f $t) }
+    Show-Line
+}
+
+function Show-Hint {
+    $h = $Levels[$script:Level - 1].Hints
+    if ($script:Hints -ge $h.Count) { Write-Host '  No more hints.' -ForegroundColor Yellow; return }
+    $label = if ($script:Hints -eq $h.Count - 1) { 'Answer' } else { "Hint $($script:Hints + 1)/$($h.Count)" }
+    Write-Host ("  {0} (-2 pts): {1}" -f $label, $h[$script:Hints]) -ForegroundColor Yellow
+    $script:Hints++
+}
+
+function Show-Scoreboard {
+    $sb = Join-Path $LabRoot 'Show-Scoreboard.ps1'
+    if (Test-Path $sb) { & $sb }
+    else { Write-Host ("  Scoreboard: {0}" -f (Get-Content (Join-Path $Cfg 'scoreboard_url.txt') -EA SilentlyContinue)) }
 }
 
 function Advance([int]$Pts) {
@@ -151,18 +212,11 @@ function Advance([int]$Pts) {
 }
 
 function Finish-Quest {
-    $team = Get-Team
     Write-Host ''
-    Write-Host ("  Windows tool drill complete. Score: {0}" -f $script:Score) -ForegroundColor Green
-    Write-Host ''
-    Write-Host '  Auto-starting Phase 2 (hardening race prep)...' -ForegroundColor Yellow
-    Write-Host '  Do not close this window yet - wait for the ready message.' -ForegroundColor DarkGray
+    Write-Host ("  Windows quest complete. Score: {0}" -f $script:Score) -ForegroundColor Green
+    Write-Host '  Starting Phase 2 prep - keep this window open until it says ready.' -ForegroundColor Yellow
     Write-Host ''
 
-    $prep = Join-Path $LabRoot 'prepare_phase2.ps1'
-    if (-not (Test-Path $prep)) {
-        $prep = Join-Path (Split-Path -Parent $MyInvocation.MyCommand.Path) 'prepare_phase2.ps1'
-    }
     $flag = Join-Path $Cfg 'start_phase2.flag'
     $done = Join-Path $Cfg 'phase2_auto_done.flag'
     $phaseFile = Join-Path $Cfg 'phase.txt'
@@ -173,18 +227,8 @@ function Finish-Quest {
     'go' | Set-Content -Path $flag -Encoding ASCII
     Set-Content -Path $phaseFile -Value 'phase1-done' -Encoding ASCII
 
-    $kicked = $false
     foreach ($tn in @('HardeningPreparePhase2', 'HardeningPhase2Watch')) {
-        try {
-            $null = schtasks /Run /TN $tn 2>&1
-            if ($LASTEXITCODE -eq 0) { $kicked = $true }
-        } catch { }
-    }
-
-    if (-not $kicked) {
-        Write-Host '  Scheduled task kick deferred - SYSTEM watcher will pick up the flag.' -ForegroundColor DarkGray
-    } else {
-        Write-Host '  Phase 2 prep task started.' -ForegroundColor DarkGray
+        try { $null = schtasks /Run /TN $tn 2>&1 } catch { }
     }
 
     $ready = $false
@@ -201,13 +245,11 @@ function Finish-Quest {
     Write-Host ''
 
     if ($ready) {
-        Write-Host '  Phase 2 is ready - hunt findings on this Windows box now.' -ForegroundColor Green
+        Write-Host '  Phase 2 is ready. Read C:\HardeningLab\PHASE2.txt and start hardening.' -ForegroundColor Green
     } else {
-        Write-Host '  Phase 2 prep is still running (or needs a mentor). Check C:\HardeningLab\phase2-prep.log' -ForegroundColor Yellow
+        Write-Host '  Phase 2 prep is still running - ask a mentor if this does not finish.' -ForegroundColor Yellow
     }
-    Write-Host ("  When mentors open scoring, fix findings for Team {0} - Linux + Windows both count." -f $team) -ForegroundColor Cyan
-    Write-Host '  Read C:\HardeningLab\PHASE2.txt for categories.' -ForegroundColor DarkGray
-    Write-Host '  Desktop: Hardening Quest (this drill)  |  DCIG Scoreboard (live points)' -ForegroundColor DarkGray
+    Write-Host '  Live points: Desktop "DCIG Scoreboard" or type scoreboard in any quest window.' -ForegroundColor DarkGray
     Write-Host ''
 }
 
@@ -216,44 +258,35 @@ Show-Help
 if ($script:Level -gt $Levels.Count) { Finish-Quest; return }
 Show-Task
 
-while ($true) {
+:quest while ($true) {
     if ($script:Level -gt $Levels.Count) { break }
-    $prompt = "hardening:$($script:Level)> "
-    Write-Host -NoNewline $prompt
+    Write-Host -NoNewline "hardening:$($script:Level)> "
     $cmd = Read-Host
     if ([string]::IsNullOrWhiteSpace($cmd)) { continue }
     switch -Regex ($cmd.Trim()) {
         '^help$' { Show-Help; continue }
         '^task$' { Show-Task; continue }
-        '^mission$' {
-            Write-Host '  Tool drill - learn commands for the Phase 2 hardening race.'
-            continue
-        }
-        '^hint$' {
-            $h = $Levels[$script:Level - 1].Hints
-            if ($script:Hints -ge $h.Count) { Write-Host '  No more hints.'; continue }
-            Write-Host ("  Hint (-2 pts): {0}" -f $h[$script:Hints]) -ForegroundColor Yellow
-            $script:Hints++
-            continue
-        }
+        '^hint$' { Show-Hint; continue }
+        '^scoreboard$' { Show-Scoreboard; continue }
         '^progress$' {
-            Write-Host ("  Level {0}/{1}  Score {2}" -f $script:Level, $Levels.Count, $script:Score)
+            Write-Host ("  Drill {0}/{1}  Score {2}" -f $script:Level, $Levels.Count, $script:Score)
             continue
         }
         '^skip$' {
             Write-Host '  Skipped (0 pts).' -ForegroundColor Yellow
             $script:Level++; $script:Hints = 0; Save-Progress
-            if ($script:Level -gt $Levels.Count) { Finish-Quest; break }
+            if ($script:Level -gt $Levels.Count) { Finish-Quest; break quest }
             Show-Task; continue
         }
-        '^(quit|exit)$' { Save-Progress; Write-Host 'Saved. Bye.'; break }
+        '^(quit|exit)$' { Save-Progress; Write-Host 'Saved. Bye.'; break quest }
         '^answer\s+(.+)$' {
             $ans = $Matches[1]
-            $L = $Levels[$script:Level - 1]
-            if ($L.Type -ne 'answer') { Write-Host '  This level auto-passes.'; continue }
+            if ($Levels[$script:Level - 1].Type -ne 'answer') {
+                Write-Host '  This drill passes on its own once the system is fixed.' -ForegroundColor Yellow
+                continue
+            }
             if (Test-Level ($script:Level - 1) $ans) {
-                $pts = [Math]::Max(0, 10 - 2 * $script:Hints)
-                Advance $pts
+                Advance ([Math]::Max(0, 10 - 2 * $script:Hints))
             } else { Write-Host '  Not it. Try hint.' -ForegroundColor Red }
             continue
         }
@@ -263,10 +296,8 @@ while ($true) {
             } catch {
                 Write-Host $_.Exception.Message -ForegroundColor Red
             }
-            $L = $Levels[$script:Level - 1]
-            if ($L.Type -eq 'auto' -and (Test-Level ($script:Level - 1) '')) {
-                $pts = [Math]::Max(0, 10 - 2 * $script:Hints)
-                Advance $pts
+            if ($Levels[$script:Level - 1].Type -eq 'auto' -and (Test-Level ($script:Level - 1) '')) {
+                Advance ([Math]::Max(0, 10 - 2 * $script:Hints))
             }
         }
     }
