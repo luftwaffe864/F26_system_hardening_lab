@@ -218,6 +218,18 @@ try_auto() {
 
 is_auto() { [[ "${L_TYPE[$((LEVEL - 1))]}" == "auto" ]]; }
 
+# Background re-check with NO controlling terminal: sudo (use_pty) otherwise grabs
+# the tty every poll and re-echoes whatever the student is typing.
+export -f as_root norm svc_active svc_enabled
+for _f in $(declare -F | awk '$3 ~ /^check_[0-9]+$/ {print $3}'); do export -f "$_f"; done
+poll_check() {
+  if command -v setsid >/dev/null 2>&1; then
+    setsid -w bash -c "check_$LEVEL" </dev/null >/dev/null 2>&1
+  else
+    "check_$LEVEL" </dev/null >/dev/null 2>&1
+  fi
+}
+
 prompt() { printf '%s hardening:%s%s%s> %s' "$DIM" "$N" "$C" "$LEVEL" "$N"; }
 
 # Waits for a line, re-checking 'auto' drills every few seconds so a fix made in
@@ -230,7 +242,7 @@ read_cmd() {
     IFS= read -r -t 3 cmd <"$QUEST_IN" && return 0
     rc=$?
     (( rc > 128 )) || return 1
-    if is_auto && "check_$LEVEL" >/dev/null 2>&1; then
+    if is_auto && poll_check; then
       say ""
       advance
       prompt
