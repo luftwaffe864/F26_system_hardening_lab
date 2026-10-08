@@ -45,6 +45,59 @@ team_from_host() {
   fi
 }
 
+
+clear_phase2_plants() {
+  # Remove Phase-2 race plants so a mentor re-apply of Phase 1 starts clean.
+  # Keep student, SSH access units, and scoreboard config intact.
+  local u
+  for u in oldintern gamesuser sysmaint helpdesk toor; do
+    userdel -r "$u" >/dev/null 2>&1 || true
+  done
+  systemctl disable --now net-helper.service lab-netprobe.service lab-diagd.service >/dev/null 2>&1 || true
+  rm -f /etc/systemd/system/net-helper.service \
+        /etc/systemd/system/lab-netprobe.service \
+        /etc/systemd/system/lab-diagd.service
+  systemctl disable --now hardening-score-agent.timer >/dev/null 2>&1 || true
+  rm -f /etc/systemd/system/hardening-score-agent.service \
+        /etc/systemd/system/hardening-score-agent.timer
+  systemctl daemon-reload || true
+  pkill -f 'listen5555.py' 2>/dev/null || true
+  pkill -f 'listen31337.py' 2>/dev/null || true
+  rm -f /usr/local/bin/snap-repair /usr/local/bin/backup-tool /usr/local/bin/.sysdiag
+  rm -rf /opt/CodecPack /opt/vault2
+  rm -f /etc/cron.d/system-update-check /var/tmp/.update_check.sh
+  rm -f /etc/sudoers.d/99-helpdesk-temp
+  rm -f /etc/hosts.equiv
+  rm -f /etc/ssh/sshd_config.d/99-lab-insecure.conf /etc/ssh/sshd_config.d/98-lab-empty.conf
+  rm -f /etc/rc.local /etc/update-motd.d/99-dcig-telemetry
+  rm -f /var/backups/passwd.lab.bak
+  rm -f /usr/local/lib/.hl-cache/listen5555.py \
+        /usr/local/lib/.hl-cache/listen31337.py \
+        /usr/local/lib/.hl-cache/nethelper.sh \
+        /usr/local/lib/.hl-cache/beacon.sh
+  install -d -m 755 /usr/local/lib/.hl-cache
+  rm -rf /var/lib/hardening-lab
+  # Root crontab beacon + authorized_keys lab backdoor
+  if crontab -l >/dev/null 2>&1; then
+    crontab -l 2>/dev/null | grep -v 'hl-beacon' | crontab - || true
+  fi
+  if [[ -f /root/.ssh/authorized_keys ]]; then
+    grep -v 'lab-backdoor' /root/.ssh/authorized_keys > /root/.ssh/authorized_keys.tmp 2>/dev/null || true
+    mv /root/.ssh/authorized_keys.tmp /root/.ssh/authorized_keys 2>/dev/null || true
+    chmod 600 /root/.ssh/authorized_keys 2>/dev/null || true
+  fi
+  # Student home artifacts / perms from Phase 2
+  if id "$STUDENT" >/dev/null 2>&1; then
+    local sh
+    sh="$(getent passwd "$STUDENT" | cut -d: -f6)"
+    sh="${sh:-/home/$STUDENT}"
+    rm -f "$sh/Documents/wifi-notes.txt" "$sh/.ssh/id_rsa_backup" "$sh/PHASE2.txt"
+    chmod 755 "$sh" 2>/dev/null || true
+    chown "$STUDENT:$STUDENT" "$sh" 2>/dev/null || true
+  fi
+  log "cleared any prior Phase-2 plants"
+}
+
 install_dirs() {
   install -d -m 755 "$CFG" "$LIB" "$CACHE" /opt/PCCleaner /opt/SystemHealth
   printf '%s\n' "$HARDENING_SECRET" > "$CFG/secret"
@@ -58,6 +111,7 @@ install_dirs() {
   rm -rf /home/"$STUDENT"/.hardening-quest 2>/dev/null || true
   rm -f "$CFG/phase2_auto_done.flag" "$CFG/start_phase2.flag" 2>/dev/null || true
   rm -f /home/"$STUDENT"/PHASE2.txt /var/log/hardening-phase2-prep.log 2>/dev/null || true
+  clear_phase2_plants
 }
 
 install_student() {

@@ -123,14 +123,21 @@ function Get-TeamId {
 
 # Undo everything prepare_phase2.ps1 plants so a reset box shows only Phase-1 content.
 function Remove-Phase2Plants {
-    cmd /c "schtasks /Delete /TN HardeningScoreAgent /F >nul 2>&1" | Out-Null
-    foreach ($u in @('tempvendor', 'contractor')) { Remove-LocalUser -Name $u -EA SilentlyContinue }
+    foreach ($tn in @('HardeningScoreAgent', 'WindowsHealthTelemetry')) {
+        cmd /c "schtasks /Delete /TN $tn /F >nul 2>&1" | Out-Null
+    }
+    cmd /c 'net localgroup Administrators "support$" /delete >nul 2>&1' | Out-Null
+    foreach ($u in @('tempvendor', 'contractor', 'support$')) { Remove-LocalUser -Name $u -EA SilentlyContinue }
     Disable-LocalUser -Name 'Guest' -EA SilentlyContinue
     $ifeo = 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options\sethc.exe'
     Remove-ItemProperty -Path $ifeo -Name 'Debugger' -EA SilentlyContinue
     try { Remove-SmbShare -Name 'TeamDrop' -Force -EA SilentlyContinue } catch {}
     Remove-Item 'C:\Shares' -Recurse -Force -EA SilentlyContinue
     Set-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System' -Name 'EnableLUA' -Value 1 -EA SilentlyContinue
+    try { Set-SmbServerConfiguration -EnableSMB1Protocol $false -Force -EA SilentlyContinue } catch {}
+    try { Set-SmbServerConfiguration -RequireSecuritySignature $true -EnableSecuritySignature $true -Force -EA SilentlyContinue } catch {}
+    try { Set-NetFirewallProfile -Profile Domain, Private, Public -Enabled True -EA SilentlyContinue } catch {}
+    Remove-ItemProperty -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\DNSClient' -Name 'EnableMulticast' -EA SilentlyContinue
     $rdp = 'HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp'
     Set-ItemProperty -Path $rdp -Name 'UserAuthentication' -Value 1 -EA SilentlyContinue
     Remove-NetFirewallRule -DisplayName 'Temp SNMP Access' -EA SilentlyContinue
@@ -147,12 +154,25 @@ function Remove-Phase2Plants {
     Set-Service -Name 'RemoteRegistry' -StartupType Manual -EA SilentlyContinue
     Stop-Service -Name 'RemoteRegistry' -Force -EA SilentlyContinue
     Set-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Lsa' -Name 'LmCompatibilityLevel' -Value 3 -EA SilentlyContinue
+    Remove-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Lsa' -Name 'RestrictAnonymous' -EA SilentlyContinue
     try { Set-Item -Path WSMan:\localhost\Service\AllowUnencrypted -Value $false -Force -EA SilentlyContinue } catch {}
     foreach ($svc in @('VendorUpd', 'HLPrintHelp')) {
         cmd /c "sc.exe stop $svc >nul 2>&1"
         cmd /c "sc.exe delete $svc >nul 2>&1"
     }
-    Remove-Item 'C:\Program Files\Vendor Update', 'C:\ProgramData\PrintNotifyHelper' -Recurse -Force -EA SilentlyContinue
+    # WMI permanent event subscription persistence (almost-impossible plant)
+    try {
+        $ns = 'root\subscription'
+        Get-CimInstance -Namespace $ns -ClassName __FilterToConsumerBinding -EA SilentlyContinue |
+            Where-Object { $_.Filter -match 'DCIGHealthFilter' -or $_.Consumer -match 'DCIGHealthConsumer' } |
+            Remove-CimInstance -EA SilentlyContinue
+        Get-CimInstance -Namespace $ns -ClassName __EventFilter -EA SilentlyContinue |
+            Where-Object { $_.Name -eq 'DCIGHealthFilter' } | Remove-CimInstance -EA SilentlyContinue
+        Get-CimInstance -Namespace $ns -ClassName CommandLineEventConsumer -EA SilentlyContinue |
+            Where-Object { $_.Name -eq 'DCIGHealthConsumer' } | Remove-CimInstance -EA SilentlyContinue
+    } catch {}
+    Remove-Item 'C:\Program Files\Vendor Update', 'C:\ProgramData\PrintNotifyHelper',
+        'C:\ProgramData\WindowsTelemetry' -Recurse -Force -EA SilentlyContinue
     Remove-Item (Join-Path $LabRoot 'PHASE2.txt'), (Join-Path $env:PUBLIC 'Desktop\PHASE2.txt'),
         (Join-Path $LabRoot 'phase2-status.txt') -Force -EA SilentlyContinue
     Remove-Item (Join-Path $LabRoot 'score_state') -Recurse -Force -EA SilentlyContinue

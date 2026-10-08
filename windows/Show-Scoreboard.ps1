@@ -21,8 +21,8 @@ $state = if ($d.frozen) { 'FROZEN' } elseif ($d.phase2_open) { 'OPEN' } else { '
 Write-Host "  Phase 2: $state"
 $r = $d.teams | Where-Object { $_.team -eq $team } | Select-Object -First 1
 if ($r) {
-    Write-Host ("  {0}: rank {1}  total {2}/{3}  (Linux {4}, Windows {5})" -f `
-        $r.name, $r.rank, $r.total, $d.max_points, $r.linux, $r.windows) -ForegroundColor Cyan
+    Write-Host ("  {0}: rank {1}  total {2}/{3}  (Linux {4}/{5}, Windows {6}/{7})" -f `
+        $r.name, $r.rank, $r.total, $d.max_points, $r.linux, $d.max_linux, $r.windows, $d.max_windows) -ForegroundColor Cyan
 } else {
     Write-Host "  Team $team has no points yet."
 }

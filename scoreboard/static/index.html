@@ -202,6 +202,18 @@
       color: var(--muted);
       padding: 0.5rem 0 0.25rem;
     }
+    .panel li.tier-head {
+      justify-content: flex-start;
+      gap: 0.5rem;
+      color: var(--accent);
+      font-size: 0.78rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      border-top: none;
+      padding: 0.75rem 0 0.2rem;
+    }
+    .panel li.tier-head .tier-max { color: var(--muted); font-weight: 600; }
     .panel-actions {
       margin-top: 1rem;
       display: flex;
@@ -223,7 +235,7 @@
   <header>
     <div>
       <h1>DCIG System Hardening</h1>
-      <div class="sub">Phase 2 race · click Linux or Windows points for broad fix hints</div>
+      <div class="sub">Phase 2 race · 25 fixes per machine (Easy→Almost Impossible) · click a score for broad hints</div>
     </div>
     <div class="badges">
       <div class="badge" id="phaseBadge">Phase 2: closed</div>
@@ -271,6 +283,7 @@
     const closePanel = document.getElementById('closePanel');
 
     let latestTeams = [];
+    let latestMeta = { max: {}, count: {} };
 
     function closeHints() {
       overlay.classList.remove('open');
@@ -283,7 +296,13 @@
       const score = osName === 'linux' ? t.linux : t.windows;
       const label = osName === 'linux' ? 'Linux' : 'Windows';
       panelTitle.textContent = `${t.name} · ${label}`;
-      panelMeta.textContent = `${score} pts earned · ${findings.length} issue${findings.length === 1 ? '' : 's'} fixed`;
+      const osMax = latestMeta.max[osName];
+      const osCount = latestMeta.count[osName];
+      const ptsPart = osMax ? `${score} / ${osMax} pts` : `${score} pts earned`;
+      const fixPart = osCount
+        ? `${findings.length} of ${osCount} fixed`
+        : `${findings.length} issue${findings.length === 1 ? '' : 's'} fixed`;
+      panelMeta.textContent = `${ptsPart} · ${fixPart}`;
       panelList.innerHTML = '';
       if (!findings.length) {
         const li = document.createElement('li');
@@ -291,9 +310,31 @@
         li.textContent = 'No scored fixes on this OS yet.';
         panelList.appendChild(li);
       } else {
+        let lastTier = null;
         for (const f of findings) {
+          if (f.tier && f.tier !== lastTier) {
+            lastTier = f.tier;
+            const grp = findings.filter((x) => x.tier === f.tier);
+            const sub = grp.reduce((a, x) => a + x.points, 0);
+            const head = document.createElement('li');
+            head.className = 'tier-head';
+            const nameSpan = document.createElement('span');
+            nameSpan.textContent = f.tier_label || f.tier;
+            const maxSpan = document.createElement('span');
+            maxSpan.className = 'tier-max';
+            maxSpan.textContent = `${grp.length} fixed · +${sub}`;
+            head.appendChild(nameSpan);
+            head.appendChild(maxSpan);
+            panelList.appendChild(head);
+          }
           const li = document.createElement('li');
-          li.innerHTML = `<span>${f.hint}</span><span class="pts-tag">+${f.points}</span>`;
+          const hintSpan = document.createElement('span');
+          hintSpan.textContent = f.hint;
+          const ptsSpan = document.createElement('span');
+          ptsSpan.className = 'pts-tag';
+          ptsSpan.textContent = `+${f.points}`;
+          li.appendChild(hintSpan);
+          li.appendChild(ptsSpan);
           panelList.appendChild(li);
         }
       }
@@ -314,6 +355,12 @@
         : `Max: <span>${maxPts}</span>`;
 
       latestTeams = data.teams || [];
+      const tb = data.tier_breakdown || {};
+      const countFor = (os) => Object.values(tb[os] || {}).reduce((a, x) => a + (x.count || 0), 0);
+      latestMeta = {
+        max: { linux: data.max_linux, windows: data.max_windows },
+        count: { linux: countFor('linux'), windows: countFor('windows') },
+      };
       rows.innerHTML = '';
       for (const t of latestTeams) {
         const tr = document.createElement('tr');
