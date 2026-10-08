@@ -42,64 +42,66 @@ add_level() { L_TITLE+=("$1"); L_TASK+=("$2"); L_TYPE+=("$3"); L_HINTS+=("$4"); 
 add_level "cat — read a file" \
 "Tool  cat <file>
 Task  Read the briefing in your home folder.  answer <team number>" \
-answer "ls ~ to see what is in your home folder|cat ~/briefing.txt|answer $TEAM_NN"
+answer "ls ~ to see what is in your home folder||cat ~/briefing.txt||answer $TEAM_NN"
 
 add_level "getent — group members" \
 "Tool  getent group <group>
 Task  Who in the sudo group should not be an admin?  answer <user>" \
-answer "getent group sudo|Ignore student - that is you|answer tempadmin"
+answer "getent group sudo||Ignore student - that is you||answer tempadmin"
 
 add_level "ss — listening ports" \
 "Tool  ss -tulnp   (-t tcp  -u udp  -l listening  -n numeric  -p process)
 Task  Find the odd TCP port listening on this box.  answer <port>" \
-answer "ss -tulnp|Look at Local Address for a high port that is not 22|answer 9999"
+answer "ss -tulnp||Look at Local Address for a high port that is not 22||answer 9999"
 
 add_level "systemctl — stop a service" \
 "Tool  systemctl list-units --type=service --state=running
       sudo systemctl disable --now <unit>
 Task  A fake service is running. Stop it and keep it off after reboot." \
-auto "systemctl list-units --type=service --state=running|Its name has 'cache' in it|sudo systemctl disable --now cache-sync"
+auto "systemctl list-units --type=service --state=running||Its name has 'cache' in it||sudo systemctl disable --now cache-sync"
 
 add_level "cron + rm — persistence" \
 "Tool  ls /etc/cron.d    cat <file>    sudo rm [-rf] <path>
 Task  A fake cleaner runs from cron. Find its cron job and delete it." \
-auto "ls /etc/cron.d - one file there is not a normal system job|cat it to confirm it runs something under /opt|sudo rm /etc/cron.d/pccleaner   (optional: sudo rm -rf /opt/PCCleaner)"
+auto "ls /etc/cron.d - one file there is not a normal system job||cat it to confirm it runs something under /opt||sudo rm /etc/cron.d/pccleaner   (optional: sudo rm -rf /opt/PCCleaner)"
 
 add_level "ufw — default deny firewall" \
 "Tool  sudo ufw default <allow|deny> incoming
       sudo ufw allow <port>/tcp
       sudo ufw --force enable      sudo ufw status verbose
 Task  Block all incoming traffic except SSH (22) and web (80), then turn ufw on." \
-auto "sudo ufw default deny incoming|sudo ufw allow 22/tcp && sudo ufw allow 80/tcp|sudo ufw --force enable  (--force skips the y/n prompt)"
+auto "sudo ufw default deny incoming||sudo ufw allow 22/tcp && sudo ufw allow 80/tcp||sudo ufw --force enable  (--force skips the y/n prompt)"
 
 add_level "sudoers — give one user one command" \
 "Task  User backupop has NO sudo rights. Give it permission to run exactly one
       command with sudo:   systemctl restart cron
       Do NOT add backupop to the sudo group (that would allow everything).
-Tool  sudo visudo -f /etc/sudoers.d/backupop   (opens an editor; save: Ctrl+O Enter Ctrl+X)
-      Rule format:  <user> ALL=(root) /full/path/to/command args
-      sudo -l -U backupop                      (shows what backupop may run)" \
-auto "Step 1: run  which systemctl  to get its full path|Step 2: sudo visudo -f /etc/sudoers.d/backupop, type ONE rule line, save and exit|Put this single line in the file: backupop ALL=(root) /usr/bin/systemctl restart cron"
+Tool  Rule format:  <user> ALL=(root) /full/path/to/command args
+      echo '<rule>' | sudo tee /etc/sudoers.d/backupop   (writes the file, no editor)
+      sudo chmod 440 /etc/sudoers.d/backupop  &&  sudo visudo -c
+      sudo -l -U backupop                                (shows what backupop may run)" \
+auto "Step 1: run  which systemctl  to get its full path||Step 2: the rule is  backupop ALL=(root) <full path> restart cron||echo 'backupop ALL=(root) /usr/bin/systemctl restart cron' | sudo tee /etc/sudoers.d/backupop   then   sudo chmod 440 /etc/sudoers.d/backupop"
 
 add_level "passwd — disable root" \
 "Tool  sudo passwd -S <user>    (P = usable password, L = locked)
       sudo passwd -l <user>
 Task  Root has a password and can log in directly. Lock it." \
-auto "sudo passwd -S root|-l locks the password; sudo still works for admins|sudo passwd -l root"
+auto "sudo passwd -S root||-l locks the password; sudo still works for admins||sudo passwd -l root"
 
 add_level "sshd_config — secure SSH" \
-"Tool  sudo nano /etc/ssh/sshd_config
-      sudo sshd -t                          (test syntax)
-      sudo sshd -T | grep -i <setting>      (effective value)
-      sudo systemctl reload ssh
-Task  No root login, at most 3 auth tries, no X11 forwarding." \
-auto "Settings: PermitRootLogin  MaxAuthTries  X11Forwarding|sshd uses the FIRST value it finds - edit existing lines, do not just append|PermitRootLogin no / MaxAuthTries 3 / X11Forwarding no, then sudo sshd -t && sudo systemctl reload ssh"
+"Task  No root login, at most 3 auth tries, no X11 forwarding.
+Tool  Files in /etc/ssh/sshd_config.d/ are read first and override sshd_config.
+      printf '%s\n' '<Setting> <value>' ... | sudo tee /etc/ssh/sshd_config.d/00-hardening.conf
+      sudo sshd -t && sudo systemctl reload ssh        (test, then apply)
+      sudo sshd -T | grep -iE 'permitroot|maxauth|x11'  (effective values)" \
+auto "Settings to set: PermitRootLogin  MaxAuthTries  X11Forwarding||Values: no / 3 / no - one setting per line in the drop-in file||printf '%s\n' 'PermitRootLogin no' 'MaxAuthTries 3' 'X11Forwarding no' | sudo tee /etc/ssh/sshd_config.d/00-hardening.conf   then   sudo systemctl reload ssh"
 
 add_level "password policy" \
-"Tool  sudo nano /etc/login.defs              (account aging)
-      sudo nano /etc/security/pwquality.conf  (password strength)
-Task  Passwords expire within 90 days and must be at least 12 characters." \
-auto "Look for PASS_MAX_DAYS and minlen|Lines starting with # are ignored - remove the #|PASS_MAX_DAYS 90 in login.defs and minlen = 12 in pwquality.conf"
+"Task  Passwords expire within 90 days and must be at least 12 characters.
+Tool  grep PASS_MAX_DAYS /etc/login.defs                     (see current value)
+      sudo sed -i 's/^PASS_MAX_DAYS.*/PASS_MAX_DAYS <days>/' /etc/login.defs
+      echo 'minlen = <n>' | sudo tee -a /etc/security/pwquality.conf" \
+auto "Two settings: PASS_MAX_DAYS in /etc/login.defs and minlen in /etc/security/pwquality.conf||sed -i replaces the line in place; tee -a adds a line to the end||sudo sed -i 's/^PASS_MAX_DAYS.*/PASS_MAX_DAYS 90/' /etc/login.defs   then   echo 'minlen = 12' | sudo tee -a /etc/security/pwquality.conf"
 
 TOTAL=${#L_TITLE[@]}
 
@@ -161,7 +163,8 @@ show_help() {
   line
   say "  ${C}task${N}  ${C}hint${N}  ${C}check${N}  ${C}answer X${N}  ${C}skip${N}  ${C}progress${N}  ${C}scoreboard${N}  ${C}quit${N}"
   say "  ${C}keys${N}  ${DIM}nano / vim shortcuts (if arrow keys misbehave)${N}"
-  say "  ${DIM}Anything else runs as a normal shell command. Fix drills pass on their own.${N}"
+  say "  ${DIM}Anything else runs as a normal shell command. Up arrow = previous commands.${N}"
+  say "  ${DIM}Fix drills pass after your next command (or press Enter / type check).${N}"
   line
 }
 
@@ -186,7 +189,9 @@ show_task() {
 
 show_hint() {
   local i=$((LEVEL - 1)) label
-  IFS='|' read -r -a hints <<<"${L_HINTS[$i]}"
+  # Hints are separated by "||" so a hint can itself contain a | pipe
+  local raw="${L_HINTS[$i]//||/$'\x1f'}"
+  IFS=$'\x1f' read -r -a hints <<<"$raw"
   if (( HINTS_USED >= ${#hints[@]} )); then warn "No more hints."; return; fi
   label="Hint $((HINTS_USED + 1))/${#hints[@]}"
   (( HINTS_USED == ${#hints[@]} - 1 )) && label="Answer"
@@ -218,36 +223,20 @@ try_auto() {
 
 is_auto() { [[ "${L_TYPE[$((LEVEL - 1))]}" == "auto" ]]; }
 
-# Background re-check with NO controlling terminal: sudo (use_pty) otherwise grabs
-# the tty every poll and re-echoes whatever the student is typing.
-export -f as_root norm svc_active svc_enabled
-for _f in $(declare -F | awk '$3 ~ /^check_[0-9]+$/ {print $3}'); do export -f "$_f"; done
-poll_check() {
-  if command -v setsid >/dev/null 2>&1; then
-    setsid -w bash -c "check_$LEVEL" </dev/null >/dev/null 2>&1
-  else
-    "check_$LEVEL" </dev/null >/dev/null 2>&1
-  fi
-}
-
-prompt() { printf '%s hardening:%s%s%s> %s' "$DIM" "$N" "$C" "$LEVEL" "$N"; }
-
-# Waits for a line, re-checking 'auto' drills every few seconds so a fix made in
-# another terminal (or a long editor session) still advances the quest. The tty is
-# line-buffered, so a timeout never eats half-typed input.
+# read -e = readline: arrow keys, Home/End, and Up/Down history at the quest prompt.
+# Colour codes are wrapped in \001..\002 so readline measures the prompt correctly.
+# Returns 0 = got a line, 1 = EOF, 2 = interrupted (Ctrl+C).
 read_cmd() {
-  local rc
-  prompt
-  while true; do
-    IFS= read -r -t 3 cmd <"$QUEST_IN" && return 0
-    rc=$?
-    (( rc > 128 )) || return 1
-    if is_auto && poll_check; then
-      say ""
-      advance
-      prompt
-    fi
-  done
+  local rc p
+  p=$'\001'"$DIM"$'\002'" hardening:"$'\001'"$N$C"$'\002'"$LEVEL"$'\001'"$N"$'\002'"> "
+  IFS= read -e -r -p "$p" cmd <"$QUEST_IN"
+  rc=$?
+  if (( rc == 0 )); then
+    [[ -n "$cmd" ]] && history -s "$cmd"
+    return 0
+  fi
+  (( rc > 128 )) && return 2
+  return 1
 }
 
 try_answer() {
@@ -305,7 +294,8 @@ QUEST_IN=/dev/tty
 [[ -r "$QUEST_IN" ]] || QUEST_IN=/dev/stdin
 
 while true; do
-  read_cmd || { say ""; break; }
+  read_cmd
+  case $? in 1) say ""; break ;; 2) continue ;; esac
   case "$cmd" in
     "" ) try_auto ;;
     help ) show_help ;;

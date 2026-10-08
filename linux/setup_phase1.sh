@@ -187,6 +187,10 @@ plant_ssh() {
   rm -f /etc/ssh/sshd_config.d/99-lab-insecure.conf
   { grep -liE '^[[:space:]]*(PermitRootLogin|MaxAuthTries|X11Forwarding)' /etc/ssh/sshd_config.d/*.conf 2>/dev/null || true; } |
     { grep -v '50-dcig-lab-access.conf' || true; } | xargs -r rm -f
+  # Drill 9 can be solved with a one-line drop-in, so the main file must include them
+  install -d -m 755 /etc/ssh/sshd_config.d
+  grep -qiE '^[[:space:]]*Include[[:space:]]+/etc/ssh/sshd_config\.d/' /etc/ssh/sshd_config ||
+    sed -i '1i Include /etc/ssh/sshd_config.d/*.conf' /etc/ssh/sshd_config
   set_sshd_opt PermitRootLogin yes
   set_sshd_opt MaxAuthTries 10
   set_sshd_opt X11Forwarding yes

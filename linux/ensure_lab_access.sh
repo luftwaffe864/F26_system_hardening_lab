@@ -25,6 +25,8 @@ if [[ -f /etc/sudoers.d/90-hardening-lab ]]; then
 fi
 
 # --- sudoers: a bad drop-in (sudoers drill) breaks sudo for everyone ----------
+# Files written with tee are 0644; fix mode first so only real syntax errors get moved.
+find /etc/sudoers.d -maxdepth 1 -type f ! -name README -exec chown root:root {} + -exec chmod 440 {} + 2>/dev/null || true
 if command -v visudo >/dev/null 2>&1 && ! visudo -c -q >/dev/null 2>&1; then
   install -d -m 700 /root/dcig-broken-sudoers
   for f in /etc/sudoers.d/*; do
