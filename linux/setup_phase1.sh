@@ -291,7 +291,7 @@ packages() {
   apt-get update -qq >/dev/null 2>&1 || true
   # Full vim + nano: vim-tiny runs in vi-compatible mode where arrow keys type A/B/C/D
   apt-get install -y -qq curl python3 ufw cron procps psmisc iproute2 \
-    openssh-server libpam-pwquality nano vim >/dev/null 2>&1 || true
+    openssh-server libpam-pwquality nano vim x11-xkb-utils >/dev/null 2>&1 || true
   install -d -m 755 /etc/vim
   cat > /etc/vim/vimrc.local <<'EOF'
 " DCIG lab: arrow keys, backspace, and line numbers behave as expected
@@ -321,6 +321,33 @@ set constantshow
 EOF
 }
 
+# Remmina -> xrdp sessions often get a keymap where arrow keys send the wrong
+# keycodes (dead in every terminal, nano, and vim). Re-applying a plain US layout
+# inside the X session fixes it; run at login, in every new terminal, and by the quest.
+install_keyboard_fix() {
+  cat > /usr/local/bin/dcig-fix-keys <<'EOF'
+#!/bin/sh
+[ -n "$DISPLAY" ] && command -v setxkbmap >/dev/null 2>&1 &&
+  setxkbmap -model pc105 -layout us -option '' >/dev/null 2>&1
+exit 0
+EOF
+  chmod 755 /usr/local/bin/dcig-fix-keys
+  install -d -m 755 /etc/xdg/autostart
+  cat > /etc/xdg/autostart/dcig-fix-keys.desktop <<'EOF'
+[Desktop Entry]
+Type=Application
+Name=DCIG keyboard fix
+Exec=/usr/local/bin/dcig-fix-keys
+NoDisplay=true
+X-GNOME-Autostart-enabled=true
+EOF
+  cat > /etc/profile.d/dcig-fix-keys.sh <<'EOF'
+[ -n "$DISPLAY" ] && [ -x /usr/local/bin/dcig-fix-keys ] && /usr/local/bin/dcig-fix-keys
+EOF
+  grep -q 'dcig-fix-keys' /etc/bash.bashrc 2>/dev/null ||
+    echo '[ -n "$DISPLAY" ] && [ -x /usr/local/bin/dcig-fix-keys ] && /usr/local/bin/dcig-fix-keys' >> /etc/bash.bashrc
+}
+
 main() {
   log "Phase 1 setup on $(hostname -s) team=$(team_from_host)"
   packages
@@ -334,6 +361,7 @@ main() {
   plant_firewall
   plant_ssh
   install_access_guard
+  install_keyboard_fix
   # Desktop shortcut → open scoreboard in browser (double-click)
   SHORTCUT_SRC="$ROOT/../scripts/make_scoreboard_shortcut.sh"
   if [[ -f "$LIB/make_scoreboard_shortcut.sh" ]]; then

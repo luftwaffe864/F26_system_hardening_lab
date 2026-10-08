@@ -7,6 +7,8 @@ set -o pipefail
 
 # nano/vim misread arrow keys when TERM is missing (web consoles, su -c, desktop launchers)
 case "${TERM:-}" in ""|dumb|unknown) export TERM=xterm-256color ;; esac
+# Remmina/xrdp keymap fix (arrow keys) - installed by setup
+[[ -x /usr/local/bin/dcig-fix-keys ]] && /usr/local/bin/dcig-fix-keys
 
 CFG=/etc/hardening-lab
 LIB=/usr/local/lib/hardening-lab
