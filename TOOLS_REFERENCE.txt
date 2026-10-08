@@ -1,0 +1,236 @@
+==============================================================================
+  DCIG SYSTEM HARDENING LAB - TOOLS AND COMMANDS REFERENCE
+  What you can use in every part of the lab. This lists tools, not answers.
+==============================================================================
+
+CONTENTS
+  1. Getting connected
+  2. Phase 1 - Linux quest
+  3. Phase 1 - Windows quest
+  4. Phase 2 - Linux hunting toolkit
+  5. Phase 2 - Windows hunting toolkit
+  6. Keyboard and safety tips
+
+
+------------------------------------------------------------------------------
+1. GETTING CONNECTED  (from your team jumpbox)
+------------------------------------------------------------------------------
+  Linux box   ssh student@192.168.1.10           then type: hardening-quest
+  Windows box Remmina > RDP > 192.168.1.11       sign in as: student
+              then double-click "Hardening Quest" on the Desktop
+  Scoreboard  Linux: type  scoreboard   Windows: "DCIG Scoreboard" on Desktop
+
+  ssh <user>@<ip>        open a remote terminal on a Linux machine
+  exit                   close the SSH session
+  Remmina                remote desktop client on the jumpbox (RDP = 3389)
+
+
+------------------------------------------------------------------------------
+2. PHASE 1 - LINUX QUEST  (type these inside hardening-quest)
+------------------------------------------------------------------------------
+  Quest commands
+    task          show the current drill again
+    hint          next hint (-2 points each; the last one is the answer)
+    check         re-check a "fix it" drill right now
+    answer <x>    submit an answer for a "find it" drill
+    skip          skip a drill (0 points)
+    progress      drill number and score
+    scoreboard    live team points
+    keys          nano / vim keyboard shortcuts
+    quit          save and leave (run hardening-quest again to resume)
+
+  Reading and finding
+    ls [-la] <dir>         list files (-a shows hidden dot-files)
+    cat <file>             print a file
+    less <file>            scroll a long file (q to quit)
+    grep <text> <file>     find lines that contain text
+    find <dir> -name <x>   search for files by name
+
+  Users and groups
+    id <user>              a user's groups
+    getent group <group>   members of a group
+    getent passwd          every account and its login shell
+    sudo passwd -S <user>  password status (P usable, L locked)
+    sudo passwd -l <user>  lock a password
+    sudo chage -l <user>   password age / expiry
+    sudo chage -M <days> <user>   maximum password age
+
+  Network
+    ss -tulnp              listening ports and the process behind each
+                           (-t tcp -u udp -l listening -n numbers -p process)
+
+  Services
+    systemctl list-units --type=service --state=running
+    systemctl status <unit>
+    sudo systemctl stop | disable | disable --now <unit>
+
+  Scheduled jobs
+    ls /etc/cron.d         system cron jobs
+    sudo rm [-rf] <path>   delete a file (-r folder, -f no prompt)
+
+  Firewall (ufw)
+    sudo ufw status verbose
+    sudo ufw default deny incoming
+    sudo ufw allow <port>/tcp
+    sudo ufw --force enable
+
+  SSH server
+    sudo sshd -T | grep <setting>      effective SSH setting
+    /etc/ssh/sshd_config.d/            override files (read before sshd_config)
+    sudo systemctl reload ssh          apply SSH changes
+
+
+------------------------------------------------------------------------------
+3. PHASE 1 - WINDOWS QUEST  (GUI tools)
+------------------------------------------------------------------------------
+  Type a tool name at the quest prompt, or press Win+R and type it there.
+
+  Quest commands
+    task  hint  check  answer <x>  skip  progress  scoreboard  quit
+    briefing / users / memo     open the lab text files from the Desktop
+
+  Tools
+    notepad <file>     read a text file
+    lusrmgr.msc        Local Users and Groups: users, passwords, groups,
+                       "Account is disabled", group membership
+    regedit            Registry Editor (paste a path in the address bar)
+    taskmgr            Task Manager > More details > Details tab = all processes
+    services.msc       Services: Service name vs Display name, Startup type,
+                       Stop / Start
+    wf.msc             Windows Defender Firewall with Advanced Security:
+                       Inbound Rules, sort by Name, Disable Rule / Delete
+    start windowsdefender:     Windows Security > Virus & threat protection
+
+
+------------------------------------------------------------------------------
+4. PHASE 2 - LINUX HUNTING TOOLKIT
+------------------------------------------------------------------------------
+  Start with README_SCENARIO.txt and PHASE2.txt in your home folder.
+
+  Accounts and privilege
+    getent passwd                     all accounts + login shells
+    awk -F: '$7 !~ /nologin|false/' /etc/passwd     accounts that can log in
+    getent group sudo                 who has sudo by group
+    sudo ls -la /etc/sudoers.d/       extra sudo rules (sudo cat to read)
+    sudo -l -U <user>                 what a user may run with sudo
+    lastlog                           last login per account
+    sudo userdel [-r] <user>          remove an account (-r home folder)
+    sudo gpasswd -d <user> <group>    remove a user from a group
+    sudo usermod -s /usr/sbin/nologin <user>    block interactive logins
+
+  Files, permissions, and secrets
+    ls -la <dir>                      permissions, owner, hidden files
+    stat <file>                       exact mode (e.g. 644, 777)
+    sudo chmod <mode> <file>          change permissions
+    sudo chown <user>:<group> <file>  change owner
+    find / -perm -4000 -type f 2>/dev/null      setuid programs
+    getcap -r / 2>/dev/null           file capabilities (not shown by -perm)
+    sudo chmod u-s <file>             remove setuid
+    sudo setcap -r <file>             remove capabilities
+    lsattr <file>   sudo chattr -i <file>       immutable flag (rm fails if set)
+    grep -ri password <dir>           look for stored passwords
+    ls /opt /usr/local/bin            places extra software hides
+
+  Things that start by themselves
+    ls -la /etc/cron.d /etc/cron.hourly /etc/cron.daily
+    sudo crontab -l                   root's personal crontab
+    sudo crontab -e                   edit it (or crontab -l | grep -v ... | crontab -)
+    cat /etc/rc.local                 old-style boot script
+    systemctl list-unit-files --state=enabled
+    systemctl list-timers --all       scheduled systemd timers
+    systemctl cat <unit>              show a unit file
+    sudo systemctl disable --now <unit or .timer>
+
+  Network and firewall
+    ss -tulnp                         listening ports + process
+    ps -ef | grep <name>              find a process
+    sudo kill <pid>   sudo pkill -f <pattern>
+    sudo ufw status verbose / enable / allow / deny
+
+  SSH
+    sudo sshd -T | grep -i <setting>  what SSH is really using
+    ls /etc/ssh/sshd_config.d/        override files (first value wins)
+    sudo cat /root/.ssh/authorized_keys     keys trusted for root
+    sudo sshd -t                      test config before reloading
+    sudo systemctl reload ssh
+
+
+------------------------------------------------------------------------------
+5. PHASE 2 - WINDOWS HUNTING TOOLKIT
+------------------------------------------------------------------------------
+  Start with README_SCENARIO.txt and PHASE2.txt on the Desktop.
+  Open tools with Win+R. Run PowerShell as administrator for the commands.
+
+  GUI tools
+    lusrmgr.msc     users, groups, disabled accounts, Administrators members
+    services.msc    services, startup type, Path to executable
+    taskschd.msc    Task Scheduler - expand EVERY folder in the library
+    wf.msc          firewall inbound / outbound rules
+    fsmgmt.msc      Shared Folders > Shares (and share permissions)
+    regedit         registry
+    secpol.msc      Local Security Policy (security options, user rights)
+    gpedit.msc      Local Group Policy (Computer Configuration > Windows
+                    Settings > Scripts is one place to check)
+    msconfig        quick view of startup and services
+    taskmgr         processes, Startup tab
+    Windows Security (Start menu)   antivirus and real-time protection
+    File Explorer   right-click > Properties > Security = file permissions
+
+  Useful folders
+    C:\ProgramData\Microsoft\Windows\Start Menu\Programs\Startup
+    C:\Users\Public\Documents
+    C:\Program Files   C:\ProgramData
+    C:\Windows\System32\drivers\etc\hosts      (open Notepad as admin to edit)
+
+  Useful registry areas (browse, read, compare with what Windows normally has)
+    HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Run
+    HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon
+    HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options
+    HKLM\SOFTWARE\Policies\Microsoft\Windows\Installer
+    HKLM\SYSTEM\CurrentControlSet\Control\Lsa
+    HKLM\SYSTEM\CurrentControlSet\Control\SecurityProviders\WDigest
+    HKLM\SYSTEM\CurrentControlSet\Control\Terminal Server
+    HKLM\SYSTEM\CurrentControlSet\Services\LanmanServer\Parameters
+
+  PowerShell / command line
+    Get-LocalUser                       accounts and Enabled
+    net localgroup Administrators       who is an admin
+    Disable-LocalUser / Remove-LocalUser <name>
+    Remove-LocalGroupMember Administrators -Member <name>
+    Get-Service | Where StartType -eq Automatic
+    Get-CimInstance Win32_Service | Select Name,PathName,StartMode
+    Set-Service <name> -StartupType Disabled ; Stop-Service <name>
+    Get-ScheduledTask | Select TaskPath,TaskName,State
+    Unregister-ScheduledTask -TaskName <name>
+    Get-SmbShare ; Get-SmbShareAccess <name> ; Remove-SmbShare <name>
+    Get-Acl <path> | Format-List        file permissions
+    icacls <path>                       view / change file permissions
+    Get-NetFirewallRule -Direction Inbound -Enabled True
+    Get-MpComputerStatus                antivirus status
+    Get-ItemProperty <registry path>    read registry values
+    netstat -ano                        listening ports + process ID
+
+
+------------------------------------------------------------------------------
+6. KEYBOARD AND SAFETY TIPS
+------------------------------------------------------------------------------
+  Linux
+    Tab              auto-complete file and command names
+    Up / Down        previous commands (inside the quest too)
+    Ctrl+C           stop the running command (not the quest)
+    man <command>    the manual; <command> --help for a short version
+    nano: Ctrl+W search, Ctrl+O save, Ctrl+X exit
+    vim:  i insert, Esc stop, :wq save+quit, :q! quit without saving
+
+  Windows
+    Win+R            Run box for any tool above
+    Right-click > Run as administrator   when a change is "access denied"
+    F5               refresh a console (services, firewall, registry)
+
+  Before you change anything
+    - Write down what you found and why it is wrong.
+    - Change one thing at a time, then check your score.
+    - Never remove or lock the student account.
+    - Keep SSH (22) on Linux and Remote Desktop (3389) on Windows working.
+    - If something breaks, tell a mentor instead of guessing.
+==============================================================================
