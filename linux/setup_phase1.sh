@@ -296,11 +296,29 @@ packages() {
   cat > /etc/vim/vimrc.local <<'EOF'
 " DCIG lab: arrow keys, backspace, and line numbers behave as expected
 set nocompatible
+silent! set esckeys
+" Web consoles can split an arrow key's escape sequence; wait long enough to rejoin it
+set ttimeout ttimeoutlen=200
 set backspace=indent,eol,start
+set whichwrap+=<,>,[,]
 set number
+set showmode
+set mouse=
 EOF
   # Offline boxes keep vim-tiny, which ignores vimrc.local
   [[ -f /etc/vim/vimrc.tiny ]] && sed -i 's/^\s*set compatible/set nocompatible/' /etc/vim/vimrc.tiny || true
+
+  # nano: decode arrow keys itself instead of trusting terminfo (fixes TERM/console
+  # mismatches where arrows otherwise do nothing or print junk)
+  touch /etc/nanorc
+  sed -i '/^# DCIG lab begin$/,/^# DCIG lab end$/d' /etc/nanorc
+  cat >> /etc/nanorc <<'EOF'
+# DCIG lab begin
+set rawsequences
+set linenumbers
+set constantshow
+# DCIG lab end
+EOF
 }
 
 main() {

@@ -76,11 +76,11 @@ add_level "sudoers — give one user one command" \
 "Task  User backupop has NO sudo rights. Give it permission to run exactly one
       command with sudo:   systemctl restart cron
       Do NOT add backupop to the sudo group (that would allow everything).
-Tool  Rule format:  <user> ALL=(root) /full/path/to/command args
-      echo '<rule>' | sudo tee /etc/sudoers.d/backupop   (writes the file, no editor)
-      sudo chmod 440 /etc/sudoers.d/backupop  &&  sudo visudo -c
-      sudo -l -U backupop                                (shows what backupop may run)" \
-auto "Step 1: run  which systemctl  to get its full path||Step 2: the rule is  backupop ALL=(root) <full path> restart cron||echo 'backupop ALL=(root) /usr/bin/systemctl restart cron' | sudo tee /etc/sudoers.d/backupop   then   sudo chmod 440 /etc/sudoers.d/backupop"
+Tool  sudo visudo -f /etc/sudoers.d/backupop   (opens nano; checks syntax when you save)
+      Rule format:  <user> ALL=(root) /full/path/to/command args
+      sudo -l -U backupop                      (shows what backupop may run)
+      Type keys for nano / vim shortcuts." \
+auto "Step 1: run  which systemctl  to get its full path||Step 2: sudo visudo -f /etc/sudoers.d/backupop, type ONE rule line, Ctrl+O Enter to save, Ctrl+X to exit||The single line to type: backupop ALL=(root) /usr/bin/systemctl restart cron"
 
 add_level "passwd — disable root" \
 "Tool  sudo passwd -S <user>    (P = usable password, L = locked)
@@ -90,18 +90,16 @@ auto "sudo passwd -S root||-l locks the password; sudo still works for admins||s
 
 add_level "sshd_config — secure SSH" \
 "Task  No root login, at most 3 auth tries, no X11 forwarding.
-Tool  Files in /etc/ssh/sshd_config.d/ are read first and override sshd_config.
-      printf '%s\n' '<Setting> <value>' ... | sudo tee /etc/ssh/sshd_config.d/00-hardening.conf
-      sudo sshd -t && sudo systemctl reload ssh        (test, then apply)
-      sudo sshd -T | grep -iE 'permitroot|maxauth|x11'  (effective values)" \
-auto "Settings to set: PermitRootLogin  MaxAuthTries  X11Forwarding||Values: no / 3 / no - one setting per line in the drop-in file||printf '%s\n' 'PermitRootLogin no' 'MaxAuthTries 3' 'X11Forwarding no' | sudo tee /etc/ssh/sshd_config.d/00-hardening.conf   then   sudo systemctl reload ssh"
+Tool  sudo nano /etc/ssh/sshd_config      (or sudo vim; Ctrl+W in nano = search)
+      sudo sshd -t && sudo systemctl reload ssh         (test, then apply)
+      sudo sshd -T | grep -iE 'permitroot|maxauth|x11'   (effective values)" \
+auto "Settings to change: PermitRootLogin  MaxAuthTries  X11Forwarding - search for each one||Edit the EXISTING line (remove a leading # if there is one); sshd uses the first value it finds||PermitRootLogin no   MaxAuthTries 3   X11Forwarding no   then   sudo sshd -t && sudo systemctl reload ssh"
 
 add_level "password policy" \
 "Task  Passwords expire within 90 days and must be at least 12 characters.
-Tool  grep PASS_MAX_DAYS /etc/login.defs                     (see current value)
-      sudo sed -i 's/^PASS_MAX_DAYS.*/PASS_MAX_DAYS <days>/' /etc/login.defs
-      echo 'minlen = <n>' | sudo tee -a /etc/security/pwquality.conf" \
-auto "Two settings: PASS_MAX_DAYS in /etc/login.defs and minlen in /etc/security/pwquality.conf||sed -i replaces the line in place; tee -a adds a line to the end||sudo sed -i 's/^PASS_MAX_DAYS.*/PASS_MAX_DAYS 90/' /etc/login.defs   then   echo 'minlen = 12' | sudo tee -a /etc/security/pwquality.conf"
+Tool  sudo nano /etc/login.defs                (account aging; Ctrl+W = search)
+      sudo nano /etc/security/pwquality.conf   (password strength)" \
+auto "Search for PASS_MAX_DAYS in login.defs and minlen in pwquality.conf||Lines starting with # are ignored - delete the # and change the number||login.defs: PASS_MAX_DAYS 90     pwquality.conf: minlen = 12"
 
 TOTAL=${#L_TITLE[@]}
 
@@ -232,7 +230,10 @@ read_cmd() {
   IFS= read -e -r -p "$p" cmd <"$QUEST_IN"
   rc=$?
   if (( rc == 0 )); then
-    [[ -n "$cmd" ]] && history -s "$cmd"
+    if [[ -n "$cmd" ]]; then
+      history -s "$cmd"
+      printf '%s\n' "$cmd" >>"$QUEST_HIST" 2>/dev/null
+    fi
     return 0
   fi
   (( rc > 128 )) && return 2
@@ -293,6 +294,11 @@ trap 'printf "\n"; warn "Ctrl+C stopped the command, not the quest. Type quit to
 QUEST_IN=/dev/tty
 [[ -r "$QUEST_IN" ]] || QUEST_IN=/dev/stdin
 
+# Up-arrow history survives quitting and re-opening the quest
+QUEST_HIST="$STATE/history"
+[[ -f "$QUEST_HIST" ]] && history -r "$QUEST_HIST"
+stty sane <"$QUEST_IN" 2>/dev/null
+
 while true; do
   read_cmd
   case $? in 1) say ""; break ;; 2) continue ;; esac
@@ -318,8 +324,12 @@ while true; do
       try_answer "${cmd#answer }" ;;
     * )
       # Subshell so command redirects cannot poison this loop's stdin.
+      # stty sane: undo any raw/no-echo mode a previous program left behind, so
+      # nano/vim get a normal terminal and arrow keys arrive as arrow keys.
       set +e
+      stty sane <"$QUEST_IN" 2>/dev/null
       ( eval "$cmd" ) <"$QUEST_IN"
+      stty sane <"$QUEST_IN" 2>/dev/null
       try_auto
       ;;
   esac
