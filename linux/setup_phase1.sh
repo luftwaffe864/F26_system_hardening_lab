@@ -150,13 +150,9 @@ plant_users() {
   fi
   echo "guestuser:guest" | chpasswd
 
-  # Sudoers drill: backupop starts with NO sudo rights
-  if ! id backupop >/dev/null 2>&1; then
-    useradd -m -s /bin/bash -c "Backup operator" backupop
-  fi
-  echo "backupop:Backup2026!" | chpasswd
-  gpasswd -d backupop sudo >/dev/null 2>&1 || true
+  # Older builds planted backupop for a sudoers drill that no longer exists
   { grep -l backupop /etc/sudoers.d/* 2>/dev/null || true; } | xargs -r rm -f
+  userdel -r backupop >/dev/null 2>&1 || true
 
   # Root-lock drill: root gets a usable password
   echo "root:Toor2026!" | chpasswd
@@ -169,6 +165,8 @@ plant_policy() {
     sed -i 's/^[[:space:]]*minlen[[:space:]]*=.*/# minlen = 8/' /etc/security/pwquality.conf
   fi
   sed -i -E 's/(pam_pwquality\.so.*) minlen=[0-9]+/\1/' /etc/pam.d/common-password 2>/dev/null || true
+  # chage drill: student's password starts as never-expiring
+  chage -M 99999 "$STUDENT" 2>/dev/null || true
 }
 
 set_sshd_opt() {

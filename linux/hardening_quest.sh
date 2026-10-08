@@ -74,34 +74,24 @@ add_level "ufw — default deny firewall" \
 Task  Block all incoming traffic except SSH (22) and web (80), then turn ufw on." \
 auto "sudo ufw default deny incoming||sudo ufw allow 22/tcp && sudo ufw allow 80/tcp||sudo ufw --force enable  (--force skips the y/n prompt)"
 
-add_level "sudoers — give one user one command" \
-"Task  User backupop has NO sudo rights. Give it permission to run exactly one
-      command with sudo:   systemctl restart cron
-      Do NOT add backupop to the sudo group (that would allow everything).
-Tool  sudo visudo -f /etc/sudoers.d/backupop   (opens nano; checks syntax when you save)
-      Rule format:  <user> ALL=(root) /full/path/to/command args
-      sudo -l -U backupop                      (shows what backupop may run)
-      Type keys for nano / vim shortcuts." \
-auto "Step 1: run  which systemctl  to get its full path||Step 2: sudo visudo -f /etc/sudoers.d/backupop, type ONE rule line, Ctrl+O Enter to save, Ctrl+X to exit||The single line to type: backupop ALL=(root) /usr/bin/systemctl restart cron"
-
 add_level "passwd — disable root" \
 "Tool  sudo passwd -S <user>    (P = usable password, L = locked)
       sudo passwd -l <user>
 Task  Root has a password and can log in directly. Lock it." \
 auto "sudo passwd -S root||-l locks the password; sudo still works for admins||sudo passwd -l root"
 
-add_level "sshd_config — secure SSH" \
-"Task  No root login, at most 3 auth tries, no X11 forwarding.
-Tool  sudo nano /etc/ssh/sshd_config      (or sudo vim; Ctrl+W in nano = search)
-      sudo sshd -t && sudo systemctl reload ssh         (test, then apply)
-      sudo sshd -T | grep -iE 'permitroot|maxauth|x11'   (effective values)" \
-auto "Settings to change: PermitRootLogin  MaxAuthTries  X11Forwarding - search for each one||Edit the EXISTING line (remove a leading # if there is one); sshd uses the first value it finds||PermitRootLogin no   MaxAuthTries 3   X11Forwarding no   then   sudo sshd -t && sudo systemctl reload ssh"
+add_level "sshd — no root login over SSH" \
+"Task  Root can log in over SSH. Turn that off.
+Tool  sudo sshd -T | grep permitrootlogin      (current value)
+      echo '<Setting> <value>' | sudo tee /etc/ssh/sshd_config.d/00-hardening.conf
+      sudo systemctl reload ssh                (apply)" \
+auto "The setting is PermitRootLogin||Files in /etc/ssh/sshd_config.d/ override the main config||echo 'PermitRootLogin no' | sudo tee /etc/ssh/sshd_config.d/00-hardening.conf   then   sudo systemctl reload ssh"
 
-add_level "password policy" \
-"Task  Passwords expire within 90 days and must be at least 12 characters.
-Tool  sudo nano /etc/login.defs                (account aging; Ctrl+W = search)
-      sudo nano /etc/security/pwquality.conf   (password strength)" \
-auto "Search for PASS_MAX_DAYS in login.defs and minlen in pwquality.conf||Lines starting with # are ignored - delete the # and change the number||login.defs: PASS_MAX_DAYS 90     pwquality.conf: minlen = 12"
+add_level "chage — password expiry" \
+"Task  Your password never expires. Make it expire every 90 days.
+Tool  sudo chage -l <user>          (show password aging)
+      sudo chage -M <days> <user>   (maximum days before a change is required)" \
+auto "Your username is $(id -un)||-M sets the maximum password age in days||sudo chage -M 90 $(id -un)"
 
 TOTAL=${#L_TITLE[@]}
 
@@ -121,32 +111,15 @@ check_6() {
     grep -qE '^(22(/tcp)?|OpenSSH)[[:space:]]+ALLOW' <<<"$s" &&
     grep -qE '^80(/tcp)?[[:space:]]+ALLOW' <<<"$s"
 }
-check_7() {
-  as_root visudo -c -q >/dev/null 2>&1 || return 1
-  id -nG backupop 2>/dev/null | tr ' ' '\n' | grep -qxE 'sudo|admin|wheel' && return 1
-  local l; l="$(as_root sudo -l -U backupop 2>/dev/null)" || return 1
-  grep -qE 'systemctl restart cron(\.service)?[[:space:]]*$' <<<"$l" &&
-    ! grep -qE '\)[[:space:]]*(NOPASSWD:[[:space:]]*)?ALL[[:space:]]*$' <<<"$l"
-}
-check_8() { [[ "$(as_root passwd -S root 2>/dev/null | awk '{print $2}')" == "L" ]]; }
-check_9() {
+check_7() { [[ "$(as_root passwd -S root 2>/dev/null | awk '{print $2}')" == "L" ]]; }
+check_8() {
   as_root install -d -m 755 /run/sshd >/dev/null 2>&1 || true
-  local t m
-  t="$(as_root /usr/sbin/sshd -T 2>/dev/null)" || return 1
-  m="$(awk '$1=="maxauthtries"{print $2}' <<<"$t")"
-  grep -qx 'permitrootlogin no' <<<"$t" &&
-    grep -qx 'x11forwarding no' <<<"$t" &&
-    [[ "$m" =~ ^[0-9]+$ ]] && (( m <= 3 ))
+  as_root /usr/sbin/sshd -T 2>/dev/null | grep -qx 'permitrootlogin no'
 }
-check_10() {
-  local d m p
-  d="$(awk '/^[[:space:]]*PASS_MAX_DAYS/{v=$2} END{print v}' /etc/login.defs 2>/dev/null)"
-  m="$(cat /etc/security/pwquality.conf /etc/security/pwquality.conf.d/*.conf 2>/dev/null |
-       awk -F= '/^[[:space:]]*minlen[[:space:]]*=/{gsub(/[[:space:]]/,"",$2); v=$2} END{print v}')"
-  p="$(grep -hoE 'pam_pwquality\.so.*minlen=[0-9]+' /etc/pam.d/common-password 2>/dev/null | grep -oE '[0-9]+$' | tail -1)"
-  [[ "$p" =~ ^[0-9]+$ ]] && { [[ "$m" =~ ^[0-9]+$ ]] && (( m >= p )) || m="$p"; }
-  [[ "$d" =~ ^[0-9]+$ ]] && (( d >= 1 && d <= 90 )) &&
-    [[ "$m" =~ ^[0-9]+$ ]] && (( m >= 12 ))
+# Field 5 of the shadow entry = maximum password age in days
+check_9() {
+  local d; d="$(as_root getent shadow "$(id -un)" 2>/dev/null | cut -d: -f5)"
+  [[ "$d" =~ ^[0-9]+$ ]] && (( d >= 1 && d <= 90 ))
 }
 
 level_points() { local p=$(( 10 - 2 * HINTS_USED )); (( p < 0 )) && p=0; echo "$p"; }

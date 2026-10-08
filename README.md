@@ -16,7 +16,7 @@ Each student gets a paired box set on an **isolated `192.168.1.0/24`** (range op
 
 ## Student flow
 
-1. **Linux tool drill** (10 drills, ~15 min) → `hardening-quest` — learn commands, not a full IR story
+1. **Linux tool drill** (9 drills, ~15 min) → `hardening-quest` — learn commands, not a full IR story
 2. Drill ends → **Phase 2 prep auto-starts on Linux**; go to matching **Windows** box
 3. **Windows tool drill** (~10 min) → Desktop **Hardening Quest** icon
 4. Drill ends → **Phase 2 prep auto-starts** on Windows
