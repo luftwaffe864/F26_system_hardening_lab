@@ -1,0 +1,131 @@
+DCIG System Hardening Lab - Mentor Scoreboard Cheat Sheet
+==========================================================
+MENTORS ONLY - contains the admin token. Do not share with students.
+
+Scoreboard host : 172.31.31.2  (Salt master)
+Web page        : http://172.31.31.2:8080/
+Admin token     : dcig-admin-2026   (env HARDENING_ADMIN)
+Score secret    : dcig-hardening-2026 (env HARDENING_SECRET, must match Salt pillar)
+
+Run the curl commands from the Salt master (or any host that can reach
+172.31.31.2:8080). Admin commands MUST send the JSON body shown below.
+
+
+1. START / STOP THE SCOREBOARD
+------------------------------
+Start (on the Salt master):
+  cd /srv/salt/F26_system_hardening_lab
+  bash homelab/start_scoreboard.sh
+
+Start on a different port:
+  bash homelab/start_scoreboard.sh --port 8081
+
+Keep it running after you log out:
+  nohup bash homelab/start_scoreboard.sh > ~/scoreboard.log 2>&1 &
+  tail -f ~/scoreboard.log
+
+Stop:
+  pkill -f 'scoreboard/server.py'   (or Ctrl+C in its terminal)
+  # if that misses it:  pkill -f 'python.*server.py'
+
+Is it listening?
+  ss -tlnp | grep 8080
+
+Broken venv (rebuild on next start):
+  rm -rf ~/.cache/dcig-hardening-scoreboard/venv
+  sudo apt install -y python3-venv python3-pip
+
+
+2. RACE CONTROL (admin)
+-----------------------
+Open Phase 2 (scoring starts counting; also un-freezes):
+  curl -X POST http://172.31.31.2:8080/api/admin/open \
+    -H 'Content-Type: application/json' \
+    -d '{"admin":"dcig-admin-2026"}'
+
+Freeze (stop the race; scores lock where they are):
+  curl -X POST http://172.31.31.2:8080/api/admin/freeze \
+    -H 'Content-Type: application/json' \
+    -d '{"admin":"dcig-admin-2026"}'
+
+Reset (wipes ALL teams' scores, closes Phase 2, un-freezes):
+  curl -X POST http://172.31.31.2:8080/api/admin/reset \
+    -H 'Content-Type: application/json' \
+    -d '{"admin":"dcig-admin-2026"}'
+
+Typical meeting flow:
+  reset -> students do quests -> open -> race -> freeze -> announce winner
+
+
+3. CHECKING STATUS
+------------------
+Full JSON (phase open/frozen, every team, scores, ready flags):
+  curl -s http://172.31.31.2:8080/api/status | python3 -m json.tool
+
+Just the phase flags:
+  curl -s http://172.31.31.2:8080/api/status | python3 -c \
+    "import sys,json;d=json.load(sys.stdin);print('open:',d.get('phase2_open'),'frozen:',d.get('frozen'))"
+
+Can a target reach the scoreboard?
+  sudo salt 'dcig-syslab-team30-ubuntu' cmd.run 'curl -sS -m 3 http://172.31.31.2:8080/api/status | head -c 200'
+  sudo salt 'win19_srv30' cmd.run '(Invoke-WebRequest -UseBasicParsing http://172.31.31.2:8080/api/status).StatusCode' shell=powershell
+
+Live event stream (watch scores arrive):
+  curl -N http://172.31.31.2:8080/api/stream
+
+
+4. SCORE AGENTS ON THE TARGETS (if a team's points are not moving)
+------------------------------------------------------------------
+Agents only start after that box finishes Phase 2 prep (quest complete).
+They check machine state about once a minute and POST to /api/score.
+
+Linux (.10) - systemd timer:
+  sudo salt 'dcig-syslab-team30-ubuntu' cmd.run 'systemctl status hardening-score-agent.timer --no-pager'
+  sudo salt 'dcig-syslab-team30-ubuntu' cmd.run 'systemctl start hardening-score-agent.service'     # score now
+  sudo salt 'dcig-syslab-team30-ubuntu' cmd.run 'journalctl -u hardening-score-agent -n 30 --no-pager'
+  sudo salt 'dcig-syslab-team30-ubuntu' cmd.run 'cat /etc/hardening-lab/phase /etc/hardening-lab/team'
+
+Windows (.11) - scheduled task:
+  sudo salt 'win19_srv30' cmd.run 'schtasks /Query /TN HardeningScoreAgent'
+  sudo salt 'win19_srv30' cmd.run 'schtasks /Run /TN HardeningScoreAgent'                           # score now
+  sudo salt 'win19_srv30' cmd.run 'Get-Content C:\HardeningLab\config\phase.txt' shell=powershell
+  sudo salt 'win19_srv30' cmd.run 'Get-Content C:\HardeningLab\phase2-prep.log -Tail 30' shell=powershell
+
+Phase 2 prep stuck after quest finished?
+  Linux:   sudo salt 'dcig-syslab-team30-ubuntu' cmd.run 'systemctl start hardening-prepare-phase2'
+           sudo salt 'dcig-syslab-team30-ubuntu' cmd.run 'tail -30 /var/log/hardening-phase2-prep.log'
+  Windows: sudo salt 'win19_srv30' cmd.run 'schtasks /Run /TN HardeningPreparePhase2'
+
+
+5. RESETTING QUESTS / BOXES (between test runs)
+-----------------------------------------------
+After any git pull on the master, refresh the state files:
+  cd /srv/salt/F26_system_hardening_lab && sudo git pull
+  sudo cp salt/hardening-lab.sls salt/hardening-lab-reset.sls /srv/salt/
+
+Full reset of a team (re-plant Phase 1, quest back to level 1):
+  sudo salt -L 'dcig-syslab-team30-ubuntu,win19_srv30' state.apply hardening-lab-reset
+
+Progress-only reset (quest restarts at level 1, nothing re-planted):
+  sudo salt 'dcig-syslab-team30-ubuntu' cmd.run 'rm -rf /home/student/.hardening-quest'
+  sudo salt 'win19_srv30' cmd.run 'Remove-Item -Recurse -Force C:\HardeningLab\config\quest -EA SilentlyContinue' shell=powershell
+
+Whole fleet (all teams):
+  sudo salt -G 'role:hardening-linux'   state.apply hardening-lab-reset
+  sudo salt -G 'role:hardening-windows' state.apply hardening-lab-reset
+
+Then wipe the board:  see "Reset" in section 2.
+
+
+6. QUICK REFERENCE
+------------------
+Team NN machines:
+  Linux   dcig-syslab-teamNN-ubuntu  192.168.1.10   ssh student@192.168.1.10
+  Windows win19_srvNN                192.168.1.11   RDP as student
+  Jumpbox teamNN-jump                192.168.1.18   (Guacamole entry point)
+Student login: student / Hardening2026!
+Scoreboard rows are named dcigNN (e.g. dcig30). Max score 565.
+
+Salt connectivity:
+  sudo salt 'dcig-syslab-team30-ubuntu' test.ping
+  sudo salt 'win19_srv30' test.ping
