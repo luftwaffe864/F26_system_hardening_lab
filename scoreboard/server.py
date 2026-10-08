@@ -9,6 +9,13 @@ DCIG System Hardening — live team scoreboard.
 
 Projector: http://<host>:8080/
 Agents POST signed finding updates to /api/score
+
+Phase 2 scoring model (per machine):
+  8 Easy (5) + 7 Medium (10) + 5 Hard (15) + 3 Very Hard (20) + 2 Almost
+  Impossible (25) = 295 points per machine, 590 points for the pair.
+Point values are the single source of truth here; score agents and the
+ANSWER_KEY must match these exactly (an agent POST whose points disagree with
+the catalog is rejected).
 """
 
 from __future__ import annotations
@@ -33,55 +40,122 @@ PORT = int(os.environ.get("HARDENING_PORT", "8080"))
 TEAM_COUNT = max(1, int(os.environ.get("HARDENING_TEAM_COUNT", "30")))
 TEAM_PREFIX = os.environ.get("HARDENING_TEAM_PREFIX", "dcig")
 
-# Broad public hints only — category-level, no paths/ports/usernames/commands.
-FINDING_CATALOG: dict[str, dict[str, dict[str, Any]]] = {
-    "linux": {
-        "L2-02": {"points": 10, "hint": "Removed an unused leftover account"},
-        "L2-09": {"points": 10, "hint": "Removed a non-business user account"},
-        "L2-06": {"points": 10, "hint": "Removed a suspicious tool from a system PATH location"},
-        "L2-10": {"points": 10, "hint": "Removed unauthorized software under /opt"},
-        "L2-11": {"points": 10, "hint": "Cleared plaintext secrets left in a user home folder"},
-        "L2-01": {"points": 15, "hint": "Reduced sudo privileges for a local account"},
-        "L2-07": {"points": 10, "hint": "Locked down or removed an exposed credential file"},
-        "L2-03": {"points": 15, "hint": "Cleared a cron.d job and its companion script"},
-        "L2-05": {"points": 15, "hint": "Closed an unexpected TCP listener"},
-        "L2-08": {"points": 15, "hint": "Enabled the host firewall (ufw)"},
-        "L2-12": {"points": 20, "hint": "Removed a risky sudoers drop-in"},
-        "L2-13": {"points": 15, "hint": "Hardened SSH root-login settings"},
-        "L2-04": {"points": 20, "hint": "Stopped and disabled an unnecessary systemd service"},
-        "L2-14": {"points": 15, "hint": "Cleaned a privileged root crontab entry"},
-        "L2-15": {"points": 15, "hint": "Removed boot-time rc.local persistence"},
-        "L2-16": {"points": 20, "hint": "Removed an unauthorized SSH trust entry for root"},
-        "L2-17": {"points": 20, "hint": "Fixed a dangerous SUID bit on a local tool"},
-        "L2-18": {"points": 20, "hint": "Closed another unexpected TCP listener"},
-        "L2-19": {"points": 15, "hint": "Tightened permissions on a secrets directory"},
-    },
-    "windows": {
-        "W2-02": {"points": 10, "hint": "Disabled or removed the built-in Guest account"},
-        "W2-09": {"points": 10, "hint": "Removed a temporary vendor account"},
-        "W2-07": {"points": 10, "hint": "Cleared an accessibility-feature debugger hijack"},
-        "W2-10": {"points": 10, "hint": "Removed or locked down an overly open SMB share"},
-        "W2-11": {"points": 10, "hint": "Re-enabled User Account Control"},
-        "W2-01": {"points": 15, "hint": "Removed excess Administrators membership"},
-        "W2-03": {"points": 15, "hint": "Required Network Level Authentication for RDP"},
-        "W2-05": {"points": 15, "hint": "Closed a risky inbound firewall exception"},
-        "W2-06": {"points": 15, "hint": "Re-enabled real-time malware protection"},
-        "W2-08": {"points": 15, "hint": "Disabled AlwaysInstallElevated policy"},
-        "W2-12": {"points": 20, "hint": "Disabled automatic interactive logon with stored secrets"},
-        "W2-13": {"points": 15, "hint": "Disabled WDigest cleartext credential caching"},
-        "W2-14": {"points": 15, "hint": "Hardened the Remote Registry service startup"},
-        "W2-04": {"points": 20, "hint": "Tightened anonymous SAM / network enumeration settings"},
-        "W2-15": {"points": 15, "hint": "Raised LAN Manager authentication level"},
-        "W2-16": {"points": 15, "hint": "Disallowed unencrypted WinRM traffic"},
-        "W2-17": {"points": 20, "hint": "Fixed or removed an unquoted service path"},
-        "W2-18": {"points": 25, "hint": "Stopped and disabled an unauthorized Windows service"},
-        "W2-19": {"points": 15, "hint": "Tightened ACLs on a sensitive shared file"},
-    },
+# Difficulty tiers (ascending). Point value is fixed per tier so every machine
+# lands on 8*5 + 7*10 + 5*15 + 3*20 + 2*25 = 295.
+TIER_POINTS: dict[str, int] = {
+    "easy": 5,
+    "medium": 10,
+    "hard": 15,
+    "very_hard": 20,
+    "almost_impossible": 25,
+}
+TIER_ORDER = list(TIER_POINTS.keys())
+TIER_LABELS: dict[str, str] = {
+    "easy": "Easy",
+    "medium": "Medium",
+    "hard": "Hard",
+    "very_hard": "Very Hard",
+    "almost_impossible": "Almost Impossible",
 }
 
-MAX_LINUX = sum(v["points"] for v in FINDING_CATALOG["linux"].values())
-MAX_WINDOWS = sum(v["points"] for v in FINDING_CATALOG["windows"].values())
+
+def _e(fid, tier, hint):
+    return fid, {"points": TIER_POINTS[tier], "tier": tier, "hint": hint}
+
+
+# Broad public hints only — category-level, no paths/ports/usernames/commands.
+# Order follows difficulty (easy -> almost impossible) within each OS.
+FINDING_CATALOG: dict[str, dict[str, dict[str, Any]]] = {
+    "linux": dict(
+        [
+            # --- EASY (8 x 5) ---
+            _e("LE1", "easy", "Removed an unused leftover account"),
+            _e("LE2", "easy", "Removed a non-business user account"),
+            _e("LE3", "easy", "Removed a suspicious tool from a system PATH location"),
+            _e("LE4", "easy", "Removed unauthorized software under /opt"),
+            _e("LE5", "easy", "Cleared plaintext secrets left in a home folder"),
+            _e("LE6", "easy", "Fixed overly open home-directory permissions"),
+            _e("LE7", "easy", "Removed or secured a world-readable account-database backup"),
+            _e("LE8", "easy", "Locked down or removed an exposed private key"),
+            # --- MEDIUM (7 x 10) ---
+            _e("LM1", "medium", "Reduced sudo privileges for a local account"),
+            _e("LM2", "medium", "Removed a risky sudoers drop-in"),
+            _e("LM3", "medium", "Cleared a cron.d job and its companion script"),
+            _e("LM4", "medium", "Removed an insecure host-trust configuration"),
+            _e("LM5", "medium", "Closed an unexpected TCP listener"),
+            _e("LM6", "medium", "Locked down or removed an exposed credential file"),
+            _e("LM7", "medium", "Disabled empty-password SSH logins"),
+            # --- HARD (5 x 15) ---
+            _e("LH1", "hard", "Stopped and disabled an unnecessary systemd service"),
+            _e("LH2", "hard", "Removed boot-time rc.local persistence"),
+            _e("LH3", "hard", "Tightened permissions on a secrets directory"),
+            _e("LH4", "hard", "Closed another unexpected TCP listener"),
+            _e("LH5", "hard", "Cleaned a privileged root crontab entry"),
+            # --- VERY HARD (3 x 20) ---
+            _e("LV1", "very_hard", "Fixed a dangerous SUID binary"),
+            _e("LV2", "very_hard", "Removed an unauthorized SSH trust entry for root"),
+            _e("LV3", "very_hard", "Removed a second UID 0 (root-equivalent) account"),
+            # --- ALMOST IMPOSSIBLE (2 x 25) ---
+            _e("LX1", "almost_impossible", "Removed a hidden Linux capability privilege backdoor"),
+            _e("LX2", "almost_impossible", "Removed a login-time root persistence script"),
+        ]
+    ),
+    "windows": dict(
+        [
+            # --- EASY (8 x 5) ---
+            _e("WE1", "easy", "Disabled or removed the built-in Guest account"),
+            _e("WE2", "easy", "Removed a leftover temporary vendor account"),
+            _e("WE3", "easy", "Re-enabled User Account Control"),
+            _e("WE4", "easy", "Locked down or removed an overly open SMB share"),
+            _e("WE5", "easy", "Required SMB message signing"),
+            _e("WE6", "easy", "Cleared an accessibility-feature debugger hijack"),
+            _e("WE7", "easy", "Disabled the legacy SMBv1 protocol"),
+            _e("WE8", "easy", "Turned the host firewall back on"),
+            # --- MEDIUM (7 x 10) ---
+            _e("WM1", "medium", "Removed excess Administrators membership"),
+            _e("WM2", "medium", "Required Network Level Authentication for RDP"),
+            _e("WM3", "medium", "Closed a risky inbound firewall exception"),
+            _e("WM4", "medium", "Disabled the AlwaysInstallElevated installer policy"),
+            _e("WM5", "medium", "Hardened the Remote Registry service startup"),
+            _e("WM6", "medium", "Disabled WDigest cleartext credential caching"),
+            _e("WM7", "medium", "Disabled LLMNR name resolution"),
+            # --- HARD (5 x 15) ---
+            _e("WH1", "hard", "Tightened anonymous SAM / network enumeration settings"),
+            _e("WH2", "hard", "Raised the LAN Manager authentication level"),
+            _e("WH3", "hard", "Disallowed unencrypted WinRM traffic"),
+            _e("WH4", "hard", "Tightened ACLs on a sensitive shared file"),
+            _e("WH5", "hard", "Disabled automatic interactive logon with stored secrets"),
+            # --- VERY HARD (3 x 20) ---
+            _e("WV1", "very_hard", "Fixed or removed an unquoted service path"),
+            _e("WV2", "very_hard", "Stopped and disabled an unauthorized Windows service"),
+            _e("WV3", "very_hard", "Removed a hidden scheduled-task persistence"),
+            # --- ALMOST IMPOSSIBLE (2 x 25) ---
+            _e("WX1", "almost_impossible", "Removed a WMI event-subscription persistence"),
+            _e("WX2", "almost_impossible", "Removed a hidden administrator account"),
+        ]
+    ),
+}
+
+
+def _max_for(os_name: str) -> int:
+    return sum(v["points"] for v in FINDING_CATALOG[os_name].values())
+
+
+def _tier_breakdown(os_name: str) -> dict[str, dict[str, int]]:
+    out: dict[str, dict[str, int]] = {
+        t: {"count": 0, "points": TIER_POINTS[t], "max": 0} for t in TIER_ORDER
+    }
+    for v in FINDING_CATALOG[os_name].values():
+        t = v["tier"]
+        out[t]["count"] += 1
+        out[t]["max"] += v["points"]
+    return out
+
+
+MAX_LINUX = _max_for("linux")
+MAX_WINDOWS = _max_for("windows")
 MAX_TOTAL = MAX_LINUX + MAX_WINDOWS
+TIER_BREAKDOWN = {"linux": _tier_breakdown("linux"), "windows": _tier_breakdown("windows")}
 
 _lock = threading.Lock()
 _state: dict[str, Any] = {
@@ -100,17 +174,22 @@ def _sign(team: str, os_name: str, finding_id: str, points: int) -> str:
 
 def _finding_list(os_name: str, bucket: dict[str, int]) -> list[dict[str, Any]]:
     catalog = FINDING_CATALOG.get(os_name, {})
+    # Preserve catalog (difficulty) order so fixes group easy -> hard.
+    order = {fid: i for i, fid in enumerate(catalog.keys())}
     items = []
     for fid, pts in bucket.items():
         meta = catalog.get(fid, {})
+        tier = meta.get("tier", "")
         items.append(
             {
                 "id": fid,
                 "points": pts,
+                "tier": tier,
+                "tier_label": TIER_LABELS.get(tier, ""),
                 "hint": meta.get("hint", "Fixed a hardening issue"),
             }
         )
-    items.sort(key=lambda x: x["id"])
+    items.sort(key=lambda x: order.get(x["id"], 999))
     return items
 
 
@@ -181,6 +260,8 @@ def _snapshot() -> dict[str, Any]:
         "max_points": MAX_TOTAL,
         "max_linux": MAX_LINUX,
         "max_windows": MAX_WINDOWS,
+        "tier_breakdown": TIER_BREAKDOWN,
+        "tier_labels": TIER_LABELS,
         "team_prefix": TEAM_PREFIX,
         "team_count": TEAM_COUNT,
     }
@@ -223,7 +304,8 @@ def lite():
         "table{border-collapse:collapse}th,td{padding:4px 16px;border-bottom:1px solid #24304a;text-align:left}"
         "th{color:#8b9bb8}</style></head><body>"
         "<h1>DCIG Hardening Scoreboard</h1>"
-        f"<p>Phase 2: <b>{state}</b> &middot; max {snap['max_points']} points &middot; refreshes every 15 s</p>"
+        f"<p>Phase 2: <b>{state}</b> &middot; max {snap['max_points']} points "
+        f"(L{snap['max_linux']} + W{snap['max_windows']}) &middot; refreshes every 15 s</p>"
         "<table><tr><th>#</th><th>Team</th><th>Linux</th><th>Windows</th><th>Total</th></tr>"
         f"{rows}</table></body></html>"
     )
@@ -293,6 +375,14 @@ def score():
     expect = _sign(team, os_name, finding_id, points)
     if not hmac.compare_digest(sig, expect):
         return jsonify({"ok": False, "error": "bad signature"}), 403
+
+    # Points integrity: the finding must be known and carry its catalog value.
+    # This keeps per-tier / per-machine / team totals exactly on the model.
+    meta = FINDING_CATALOG.get(os_name, {}).get(finding_id)
+    if meta is None:
+        return jsonify({"ok": False, "error": "unknown finding"}), 400
+    if points != meta["points"]:
+        return jsonify({"ok": False, "error": "points mismatch"}), 400
 
     with _lock:
         if _state["frozen"]:

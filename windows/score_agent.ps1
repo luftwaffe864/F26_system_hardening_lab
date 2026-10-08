@@ -2,6 +2,9 @@
 ================================================================================
  DCIG System Hardening - Windows score agent (Phase 2)
  Machine-state checks only - Windows-native findings (not a Linux mirror).
+ 25 findings / 295 pts:  8 Easy (5), 7 Medium (10), 5 Hard (15),
+                         3 Very Hard (20), 2 Almost Impossible (25).
+ Point values MUST match scoreboard/server.py (the board rejects mismatches).
 ================================================================================
 #>
 $ErrorActionPreference = 'SilentlyContinue'
@@ -56,115 +59,136 @@ function Get-AdminNames {
     }
 }
 
-# --- EASY ---
-# W2-02 Guest disabled or removed
+# ======================= EASY (5) =======================
+# WE1 Guest disabled or removed
 $guest = Get-LocalUser -Name 'Guest' -EA SilentlyContinue
-if ($guest -and -not $guest.Enabled) { Post-Finding 'W2-02' 10 }
-elseif (-not $guest) { Post-Finding 'W2-02' 10 }
+if (($guest -and -not $guest.Enabled) -or (-not $guest)) { Post-Finding 'WE1' 5 }
 
-# W2-09 tempvendor removed
-if (-not (Get-LocalUser -Name 'tempvendor' -EA SilentlyContinue)) { Post-Finding 'W2-09' 10 }
+# WE2 tempvendor removed
+if (-not (Get-LocalUser -Name 'tempvendor' -EA SilentlyContinue)) { Post-Finding 'WE2' 5 }
 
-# W2-07 Sticky Keys IFEO debugger cleared
-$ifeo = Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options\sethc.exe' -EA SilentlyContinue
-if (-not $ifeo -or [string]::IsNullOrEmpty([string]$ifeo.Debugger)) { Post-Finding 'W2-07' 10 }
+# WE3 UAC re-enabled (EnableLUA = 1)
+$lua = (Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System' -EA SilentlyContinue).EnableLUA
+if ($lua -eq 1) { Post-Finding 'WE3' 5 }
 
-# W2-10 TeamDrop share gone or Everyone FullAccess removed
+# WE4 TeamDrop share gone or Everyone FullAccess removed
 $share = Get-SmbShare -Name 'TeamDrop' -EA SilentlyContinue
-if (-not $share) { Post-Finding 'W2-10' 10 }
+if (-not $share) { Post-Finding 'WE4' 5 }
 else {
     $access = Get-SmbShareAccess -Name 'TeamDrop' -EA SilentlyContinue
     $everyoneFull = $access | Where-Object {
         $_.AccountName -match 'Everyone' -and $_.AccessRight -eq 'Full' -and $_.AccessControlType -eq 'Allow'
     }
-    if (-not $everyoneFull) { Post-Finding 'W2-10' 10 }
+    if (-not $everyoneFull) { Post-Finding 'WE4' 5 }
 }
 
-# W2-11 UAC re-enabled (EnableLUA = 1)
-$lua = (Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System' -EA SilentlyContinue).EnableLUA
-if ($lua -eq 1) { Post-Finding 'W2-11' 10 }
+# WE5 SMB signing required
+$smbSign = (Get-SmbServerConfiguration -EA SilentlyContinue).RequireSecuritySignature
+if ($null -ne $smbSign -and $smbSign -eq $true) { Post-Finding 'WE5' 5 }
 
-# --- MEDIUM ---
-# W2-01 contractor not admin / deleted
+# WE6 Sticky Keys IFEO debugger cleared
+$ifeo = Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options\sethc.exe' -EA SilentlyContinue
+if (-not $ifeo -or [string]::IsNullOrEmpty([string]$ifeo.Debugger)) { Post-Finding 'WE6' 5 }
+
+# WE7 SMBv1 disabled
+$smb1 = (Get-SmbServerConfiguration -EA SilentlyContinue).EnableSMB1Protocol
+if ($null -ne $smb1 -and $smb1 -eq $false) { Post-Finding 'WE7' 5 }
+
+# WE8 Firewall re-enabled on all profiles
+$prof = Get-NetFirewallProfile -Profile Domain, Private, Public -EA SilentlyContinue
+if ($prof -and (@($prof | Where-Object { -not $_.Enabled }).Count -eq 0)) { Post-Finding 'WE8' 5 }
+
+# ======================= MEDIUM (10) =======================
+# WM1 contractor not admin / deleted
 $con = Get-LocalUser -Name 'contractor' -EA SilentlyContinue
-if (-not $con) { Post-Finding 'W2-01' 15 }
-elseif ((Get-AdminNames) -notcontains 'contractor') { Post-Finding 'W2-01' 15 }
+if (-not $con) { Post-Finding 'WM1' 10 }
+elseif ((Get-AdminNames) -notcontains 'contractor') { Post-Finding 'WM1' 10 }
 
-# W2-03 RDP NLA required (UserAuthentication = 1)
+# WM2 RDP NLA required (UserAuthentication = 1)
 $nla = (Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -EA SilentlyContinue).UserAuthentication
-if ($nla -eq 1) { Post-Finding 'W2-03' 15 }
+if ($nla -eq 1) { Post-Finding 'WM2' 10 }
 
-# W2-05 SNMP firewall hole closed
-if (Test-FwGoneOrOff 'Temp SNMP Access') { Post-Finding 'W2-05' 15 }
+# WM3 SNMP firewall hole closed
+if (Test-FwGoneOrOff 'Temp SNMP Access') { Post-Finding 'WM3' 10 }
 
-# W2-06 Defender real-time on
-# A failed query must not count as "on"
-try {
-    $p = Get-MpPreference -EA Stop
-    $s = Get-MpComputerStatus -EA SilentlyContinue
-    if ($p -and $p.DisableRealtimeMonitoring -eq $false -and (-not $s -or $s.RealTimeProtectionEnabled)) {
-        Post-Finding 'W2-06' 15
-    }
-} catch {}
-
-# W2-08 AlwaysInstallElevated cleared in both hives (missing or 0)
+# WM4 AlwaysInstallElevated cleared in both hives (missing or 0)
 $hk = (Get-ItemProperty 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\Installer' -EA SilentlyContinue).AlwaysInstallElevated
 $cu = (Get-ItemProperty 'HKCU:\SOFTWARE\Policies\Microsoft\Windows\Installer' -EA SilentlyContinue).AlwaysInstallElevated
-if (($null -eq $hk -or $hk -eq 0) -and ($null -eq $cu -or $cu -eq 0)) { Post-Finding 'W2-08' 15 }
+if (($null -eq $hk -or $hk -eq 0) -and ($null -eq $cu -or $cu -eq 0)) { Post-Finding 'WM4' 10 }
 
-# W2-12 AutoAdminLogon off + DefaultPassword cleared
-$wl = Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon' -EA SilentlyContinue
-if ($null -eq $wl -or (($wl.AutoAdminLogon -ne '1') -and [string]::IsNullOrEmpty([string]$wl.DefaultPassword))) {
-    Post-Finding 'W2-12' 20
-}
-
-# W2-13 WDigest cleartext caching off
-$wd = (Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\SecurityProviders\WDigest' -EA SilentlyContinue).UseLogonCredential
-if ($null -eq $wd -or $wd -eq 0) { Post-Finding 'W2-13' 15 }
-
-# W2-14 Remote Registry not set to Automatic (Manual/Disabled is fine)
+# WM5 Remote Registry not set to Automatic (Manual/Disabled is fine)
 $rr = Get-Service -Name 'RemoteRegistry' -EA SilentlyContinue
-if (-not $rr -or $rr.StartType -ne 'Automatic') { Post-Finding 'W2-14' 15 }
+if (-not $rr -or $rr.StartType -ne 'Automatic') { Post-Finding 'WM5' 10 }
 
-# --- HARD ---
-# W2-04 RestrictAnonymous hardened (>= 1)
+# WM6 WDigest cleartext caching off
+$wd = (Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\SecurityProviders\WDigest' -EA SilentlyContinue).UseLogonCredential
+if ($null -eq $wd -or $wd -eq 0) { Post-Finding 'WM6' 10 }
+
+# WM7 LLMNR disabled (EnableMulticast = 0)
+$llmnr = (Get-ItemProperty 'HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\DNSClient' -EA SilentlyContinue).EnableMulticast
+if ($null -ne $llmnr -and $llmnr -eq 0) { Post-Finding 'WM7' 10 }
+
+# ======================= HARD (15) =======================
+# WH1 RestrictAnonymous hardened (>= 1)
 $ra = (Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\Lsa' -EA SilentlyContinue).RestrictAnonymous
-if ($null -ne $ra -and [int]$ra -ge 1) { Post-Finding 'W2-04' 20 }
+if ($null -ne $ra -and [int]$ra -ge 1) { Post-Finding 'WH1' 15 }
 
-# W2-15 LM compatibility not weak (>= 3)
+# WH2 LM compatibility not weak (>= 3)
 $lm = (Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\Lsa' -EA SilentlyContinue).LmCompatibilityLevel
-if ($null -ne $lm -and [int]$lm -ge 3) { Post-Finding 'W2-15' 15 }
+if ($null -ne $lm -and [int]$lm -ge 3) { Post-Finding 'WH2' 15 }
 
-# W2-16 WinRM does not allow unencrypted
+# WH3 WinRM does not allow unencrypted
 $allowUnenc = $null
 try { $allowUnenc = (Get-Item -Path WSMan:\localhost\Service\AllowUnencrypted -EA SilentlyContinue).Value } catch {}
 if ($null -eq $allowUnenc) {
-    # If WinRM path unavailable, treat as fixed only when we cannot read true (avoid free points)
-    # Fall through - no auto-award
+    # WinRM path unavailable - no free points
 } elseif (-not $allowUnenc -or $allowUnenc -eq $false -or "$allowUnenc" -eq 'false') {
-    Post-Finding 'W2-16' 15
+    Post-Finding 'WH3' 15
 }
 
-# W2-17 unquoted VendorUpd service removed OR ImagePath properly quoted without exploit pattern
-$vs = Get-CimInstance Win32_Service -Filter "Name='VendorUpd'" -EA SilentlyContinue
-if (-not $vs) { Post-Finding 'W2-17' 20 }
-else {
-    $img = [string]$vs.PathName
-    # Fixed if path is quoted starting at C:\Program Files
-    if ($img -match '^".+"') { Post-Finding 'W2-17' 20 }
-}
-
-# W2-18 HLPrintHelp stopped+disabled or deleted
-$svc = Get-Service -Name 'HLPrintHelp' -EA SilentlyContinue
-if (-not $svc) { Post-Finding 'W2-18' 25 }
-elseif ($svc.StartType -eq 'Disabled') { Post-Finding 'W2-18' 25 }
-
-# W2-19 payroll.csv gone or Everyone Full removed
+# WH4 payroll.csv gone or Everyone Full removed
 $pay = 'C:\Shares\HR\payroll.csv'
-if (-not (Test-Path $pay)) { Post-Finding 'W2-19' 15 }
+if (-not (Test-Path $pay)) { Post-Finding 'WH4' 15 }
 else {
     $acl = Get-Acl $pay
     if (-not ($acl.Access | Where-Object { $_.IdentityReference -match 'Everyone' -and $_.FileSystemRights -match 'FullControl' })) {
-        Post-Finding 'W2-19' 15
+        Post-Finding 'WH4' 15
     }
 }
+
+# WH5 AutoAdminLogon off + DefaultPassword cleared
+$wl = Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon' -EA SilentlyContinue
+if ($null -eq $wl -or (($wl.AutoAdminLogon -ne '1') -and [string]::IsNullOrEmpty([string]$wl.DefaultPassword))) {
+    Post-Finding 'WH5' 15
+}
+
+# ======================= VERY HARD (20) =======================
+# WV1 unquoted VendorUpd service removed OR ImagePath properly quoted
+$vs = Get-CimInstance Win32_Service -Filter "Name='VendorUpd'" -EA SilentlyContinue
+if (-not $vs) { Post-Finding 'WV1' 20 }
+else {
+    $img = [string]$vs.PathName
+    if ($img -match '^".+"') { Post-Finding 'WV1' 20 }
+}
+
+# WV2 HLPrintHelp stopped+disabled or deleted
+$svc = Get-Service -Name 'HLPrintHelp' -EA SilentlyContinue
+if (-not $svc) { Post-Finding 'WV2' 20 }
+elseif ($svc.StartType -eq 'Disabled') { Post-Finding 'WV2' 20 }
+
+# WV3 hidden scheduled task removed or disabled
+cmd /c 'schtasks /Query /TN WindowsHealthTelemetry >nul 2>&1'
+if ($LASTEXITCODE -ne 0) { Post-Finding 'WV3' 20 }
+else {
+    $q = cmd /c 'schtasks /Query /TN WindowsHealthTelemetry /FO LIST 2>nul'
+    if ($q -match '(?im)^\s*Status:\s*Disabled') { Post-Finding 'WV3' 20 }
+}
+
+# ======================= ALMOST IMPOSSIBLE (25) =======================
+# WX1 WMI event subscription removed (our filter gone)
+$filt = Get-CimInstance -Namespace 'root\subscription' -ClassName __EventFilter -EA SilentlyContinue |
+    Where-Object { $_.Name -eq 'DCIGHealthFilter' }
+if (-not $filt) { Post-Finding 'WX1' 25 }
+
+# WX2 hidden admin account support$ removed
+if (-not (Get-LocalUser -Name 'support$' -EA SilentlyContinue)) { Post-Finding 'WX2' 25 }

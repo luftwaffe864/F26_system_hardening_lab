@@ -34,9 +34,10 @@ print("Phase 2:", state)
 
 for r in d.get("teams", []):
     if r.get("team") == team:
-        print("%s: rank %s  total %s/%s  (Linux %s, Windows %s)" % (
+        print("%s: rank %s  total %s/%s  (Linux %s/%s, Windows %s/%s)" % (
             r.get("name"), r.get("rank"), r.get("total"), d.get("max_points"),
-            r.get("linux"), r.get("windows")))
+            r.get("linux"), d.get("max_linux"),
+            r.get("windows"), d.get("max_windows")))
         break
 else:
     print("Team %s has no points yet." % (team or "??"))

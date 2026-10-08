@@ -668,7 +668,7 @@ curl -X POST http://192.168.1.7:8080/api/admin/open \
   -d '{"admin":"dcig-admin-2026"}'
 ```
 
-Harden both boxes (use your private `ANSWER_KEY.txt` for the finding list). Linux agent ~20s; Windows agent ~1 min. Points should appear under **Team 01**.
+Harden both boxes (use your private `ANSWER_KEY.txt` for the finding list — 25 findings / 295 pts per OS, 590 combined). Linux agent ~20s; Windows agent ~1 min. Points should appear under **Team 01**.
 
 ---
 

@@ -2,6 +2,8 @@
 
 Guided quests on **Linux then Windows**, then a **Phase 2** find-and-fix hardening race with a live **team** scoreboard.
 
+Phase 2 scoring (per machine): **8 Easy (5)** + **7 Medium (10)** + **5 Hard (15)** + **3 Very Hard (20)** + **2 Almost Impossible (25)** = **295** points; **590** combined.
+
 Each student gets a paired box set on an **isolated `192.168.1.0/24`** (range ops pre-configure subnet and IPs):
 
 | Role | Salt minion ID (range) | IP (in each pod) |
