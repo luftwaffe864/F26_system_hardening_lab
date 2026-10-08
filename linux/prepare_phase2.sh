@@ -359,6 +359,9 @@ curl -sS -m 5 -X POST "$SCOREBOARD_URL/api/ready" \
 cat > /home/"$STUDENT"/PHASE2.txt <<EOF
 Phase 2 is ready on this Linux box (Team $TEAM).
 
+Start with README_SCENARIO.txt in your home folder - it explains the company
+and its security policy.
+
 25 findings. The score agent checks the machine about every 20 seconds.
 You do NOT type answers. Run  scoreboard  to see your points.
 
@@ -390,6 +393,75 @@ something that starts by itself) because those matter on every system.
 Mentors open the room scoreboard when the race starts.
 EOF
 chown "$STUDENT:$STUDENT" /home/"$STUDENT"/PHASE2.txt
+
+cat > /home/"$STUDENT"/README_SCENARIO.txt <<EOF
+==============================================================================
+  NORTHWIND LEDGER CO. - Incoming IT Administrator Brief
+  Server: $(hostname -s)   (Team $TEAM)
+==============================================================================
+
+WHO WE ARE
+  Northwind Ledger is a 30-person bookkeeping firm. We keep payroll and tax
+  records for about 200 small businesses. This Linux server runs our internal
+  web portal and stores nightly exports from the accounting software.
+
+WHAT HAPPENED
+  Our last IT contractor left in a hurry. Since then, staff have reported
+  slow logins, odd network traffic at night, and a laptop that "had a pop-up
+  about a password file". An outside auditor arrives Monday. Our cyber
+  insurance renewal depends on passing that audit.
+
+  You are the new administrator. Your job is to bring this server back in
+  line with company policy before the auditor arrives. Nobody can tell you
+  exactly what the last contractor changed - you have to find it.
+
+COMPANY SECURITY POLICY (summary)
+  1. People
+     - Only current, named staff have accounts. Interns, test, and shared
+       accounts are removed when they are no longer needed.
+     - Accounts that exist for software or services must never be usable
+       for an interactive login.
+     - Administrator (root) rights are given only to the IT administrator,
+       and only through approved, documented means.
+
+  2. Remote access
+     - Remote administration uses SSH only.
+     - Nobody signs in directly as root over the network.
+     - Only the company's own keys and accounts may be trusted for access.
+
+  3. Software and scheduled work
+     - Only approved software is installed.
+     - Anything that runs on its own - at boot, on a schedule, or as a
+       background service - must be documented and have a business reason.
+     - Programs must not grant themselves more privilege than they need.
+
+  4. Data
+     - Passwords and keys are never kept in plain text files.
+     - Sensitive files are readable only by the people who need them.
+
+  5. Network
+     - The host firewall is on.
+     - The server listens only for SSH (22) and the web portal (80).
+
+AUTHORIZED ACCOUNTS ON THIS SERVER
+  student     IT administrator (you) - keep sudo, do not remove
+  Built-in operating system accounts are expected; they just should not
+  be usable for logins. Any other person-style account is NOT authorized.
+
+GROUND RULES FOR THIS ENGAGEMENT
+  - Do not lock yourself out. Keep SSH on port 22 working.
+  - Do not remove or lock the student account.
+  - Fix the system itself. Points are awarded automatically as the server
+    comes into compliance - there is nothing to type in.
+  - Run  scoreboard  to watch your progress.
+
+The auditor will look at the whole system, not a checklist. Neither should you.
+==============================================================================
+EOF
+chown "$STUDENT:$STUDENT" /home/"$STUDENT"/README_SCENARIO.txt
+if [[ -d /home/$STUDENT/Desktop ]]; then
+  install -m 644 -o "$STUDENT" -g "$STUDENT" /home/"$STUDENT"/README_SCENARIO.txt /home/"$STUDENT"/Desktop/README_SCENARIO.txt
+fi
 
 if [[ -x "$LIB/ensure_lab_access.sh" ]]; then
   "$LIB/ensure_lab_access.sh" || true

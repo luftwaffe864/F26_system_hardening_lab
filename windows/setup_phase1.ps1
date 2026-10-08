@@ -175,6 +175,7 @@ function Remove-Phase2Plants {
     $gp = Join-Path $env:SystemRoot 'System32\GroupPolicy\Machine\Scripts'
     Remove-Item (Join-Path $gp 'Startup\lab-sync.bat'), (Join-Path $gp 'scripts.ini') -Force -EA SilentlyContinue
     Remove-Item (Join-Path $LabRoot 'PHASE2.txt'), (Join-Path $env:PUBLIC 'Desktop\PHASE2.txt'),
+        (Join-Path $LabRoot 'README_SCENARIO.txt'), (Join-Path $env:PUBLIC 'Desktop\README_SCENARIO.txt'),
         (Join-Path $LabRoot 'phase2-status.txt') -Force -EA SilentlyContinue
     Remove-Item (Join-Path $LabRoot 'score_state'), (Join-Path $Cfg 'planted') -Recurse -Force -EA SilentlyContinue
 }

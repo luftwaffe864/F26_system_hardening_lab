@@ -352,6 +352,10 @@ $phase2 = @"
 DCIG SYSTEM HARDENING - PHASE 2 (Windows)
 Host: $env:COMPUTERNAME     Team: $Team
 
+START HERE
+  Read README_SCENARIO.txt on the Desktop - it explains the company and
+  its security policy.
+
 GOAL
   25 findings. A score agent checks the machine about once a minute and
   awards points on its own - there is nothing to type in.
@@ -409,6 +413,80 @@ something that starts by itself) because those matter on every system.
 "@
 $phase2 | Set-Content (Join-Path $LabRoot 'PHASE2.txt') -Encoding ASCII
 Copy-Item (Join-Path $LabRoot 'PHASE2.txt') (Join-Path $PubDesk 'PHASE2.txt') -Force -EA SilentlyContinue
+
+$scenario = @"
+==============================================================================
+  NORTHWIND LEDGER CO. - Incoming IT Administrator Brief
+  Workstation / file server: $env:COMPUTERNAME   (Team $Team)
+==============================================================================
+
+WHO WE ARE
+  Northwind Ledger is a 30-person bookkeeping firm. We keep payroll and tax
+  records for about 200 small businesses. This Windows server is the front
+  office machine: staff sign in to it over Remote Desktop, and it holds the
+  shared folders where HR and the sales team drop their files.
+
+WHAT HAPPENED
+  Our last IT contractor left in a hurry. Since then, staff have noticed
+  programs opening by themselves at sign-in, a strange website loading
+  instead of the company intranet, and a coworker who could install software
+  without asking IT. An outside auditor arrives Monday. Our cyber insurance
+  renewal depends on passing that audit.
+
+  You are the new administrator. Your job is to bring this machine back in
+  line with company policy before the auditor arrives. Nobody can tell you
+  exactly what the last contractor changed - you have to find it.
+
+COMPANY SECURITY POLICY (summary)
+  1. People
+     - Only current, named staff have accounts. Vendor, temporary, and
+       guest-style accounts are removed or disabled when not needed.
+     - Administrator rights are given only to IT.
+     - A normal user must never be able to gain administrator rights on
+       their own - not through installers, and not through login-screen tricks.
+
+  2. Sign-in and remote access
+     - Nobody's password is stored on the machine so it can sign in by
+       itself.
+     - Remote Desktop must verify who you are before a session is created.
+     - Only the programs Windows needs run when someone signs in.
+
+  3. Software and scheduled work
+     - Only approved software is installed.
+     - Anything that runs on its own - at startup, at sign-in, on a schedule,
+       or as a service - must be documented and have a business reason.
+     - Services are configured so Windows cannot be tricked into running the
+       wrong program.
+
+  4. Data and sharing
+     - Passwords are never kept in plain text files.
+     - Shared folders and files are open only to the people who need them.
+     - Anonymous (signed-out) users get no information from this machine.
+
+  5. Network and protection
+     - Antivirus real-time protection stays on.
+     - The firewall allows only what the business needs (Remote Desktop).
+     - Name lookups go to the real company servers, not local overrides.
+     - Authentication uses modern protocols only. Credentials are never kept
+       in memory in readable form.
+
+AUTHORIZED ACCOUNTS
+  See PHASE2.txt on the Desktop for who should exist and who should be an
+  administrator. Anyone not on that list is not authorized.
+
+GROUND RULES FOR THIS ENGAGEMENT
+  - Do not lock yourself out. Keep Remote Desktop and the
+    'DCIG Lab RDP Access' firewall rule working.
+  - Do not rename, disable, or delete the student account.
+  - Fix the system itself. Points are awarded automatically as the machine
+    comes into compliance - there is nothing to type in.
+  - Watch your progress on the Desktop "DCIG Scoreboard".
+
+The auditor will look at the whole system, not a checklist. Neither should you.
+==============================================================================
+"@
+$scenario | Set-Content (Join-Path $LabRoot 'README_SCENARIO.txt') -Encoding ASCII
+Copy-Item (Join-Path $LabRoot 'README_SCENARIO.txt') (Join-Path $PubDesk 'README_SCENARIO.txt') -Force -EA SilentlyContinue
 
 # ---- mark done (always, even if some plants failed) ----
 Set-Content (Join-Path $Cfg 'phase.txt') 'phase2'

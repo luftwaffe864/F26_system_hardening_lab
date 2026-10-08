@@ -371,7 +371,8 @@ clear_phase2() {
     crontab -l 2>/dev/null | grep -v hl-beacon | crontab - || true
   fi
   rm -rf /var/lib/hardening-lab/planted
-  rm -f /var/lib/hardening-lab/got_* /home/student/PHASE2.txt 2>/dev/null || true
+  rm -f /var/lib/hardening-lab/got_* /home/student/PHASE2.txt \
+        /home/student/README_SCENARIO.txt /home/student/Desktop/README_SCENARIO.txt 2>/dev/null || true
 }
 
 main() {
