@@ -27,8 +27,24 @@ if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administra
     exit 0
 }
 
+# QuickEdit freezes the script whenever the student clicks inside this window,
+# which stops the auto-checks until a key is pressed.
+try {
+    Add-Type -Namespace DCIG -Name Con -MemberDefinition @'
+[DllImport("kernel32.dll")] public static extern System.IntPtr GetStdHandle(int h);
+[DllImport("kernel32.dll")] public static extern bool GetConsoleMode(System.IntPtr h, out uint m);
+[DllImport("kernel32.dll")] public static extern bool SetConsoleMode(System.IntPtr h, uint m);
+'@ -EA Stop
+    $hIn = [DCIG.Con]::GetStdHandle(-10)
+    $mode = [uint32]0
+    if ([DCIG.Con]::GetConsoleMode($hIn, [ref]$mode)) {
+        [void][DCIG.Con]::SetConsoleMode($hIn, [uint32](($mode -band 0xFFBF) -bor 0x80))
+    }
+} catch { }
+
 $LabRoot = 'C:\HardeningLab'
 $Cfg     = Join-Path $LabRoot 'config'
+$Desk    = Join-Path $env:PUBLIC 'Desktop'
 # Machine-wide, not per-profile: elevation may run the quest under a different account
 $StateDir = Join-Path $Cfg 'quest'
 $Progress = Join-Path $StateDir 'progress.txt'
@@ -75,68 +91,76 @@ function Test-Answer([string]$Got, [string[]]$Accept) {
     return ($Accept | ForEach-Object { $_.ToLower() }) -contains $g
 }
 
-# Open = what to type at the prompt to launch the tool. Task = goal only.
-# 'answer' steps: find something in the GUI and name it. 'auto' steps: fix it in the GUI;
-# the quest notices on its own within a few seconds. Answers live in the LAST hint.
+function Open-LabFile([string]$Name) {
+    $p = Join-Path $Desk $Name
+    if (-not (Test-Path $p)) { $p = Join-Path $LabRoot $Name }
+    Start-Process notepad.exe -ArgumentList "`"$p`""
+}
+
+# Open = what to type at this prompt (or in Start > Run) to launch the tool.
+# 'answer' steps: find something and type answer <x>.
+# 'auto' steps: Todo returns what is still wrong; the step passes when it returns nothing.
+# Answers live in the LAST hint.
 $Levels = @(
     @{
         Title = 'Notepad - read the briefing'
-        Open  = 'notepad C:\HardeningLab\briefing.txt'
+        Open  = @('briefing.txt on the Desktop   (or type: briefing)')
         Task  = 'What is your team number?  answer <NN>'
         Type  = 'answer'
         Check = { param($a) Test-Answer $a @($TeamNN, [string][int]$TeamNN) }
-        Hints = @('Type the Open line at the hardening prompt and press Enter', 'Look for the line that starts with Team:', "answer $TeamNN")
+        Hints = @('Double-click briefing.txt on the Desktop', 'Look for the line that starts with Team:', "answer $TeamNN")
     },
     @{
-        Title = 'Local Users and Groups - find a bad admin'
-        Open  = @('lusrmgr.msc', 'notepad C:\HardeningLab\authorized_users.txt')
-        Task  = "Open Groups > Administrators and compare with the list.`nWhich AUTHORIZED user should not be an admin?  answer <username>"
+        Title = 'Local Users and Groups - spot a bad admin'
+        Open  = @('lusrmgr.msc', 'authorized_users.txt on the Desktop   (or type: users)')
+        Task  = "Open Groups > Administrators and compare it with the list.`nName ONE member who should not be an admin.  answer <username>"
         Type  = 'answer'
-        Check = { param($a) Test-Answer $a @('bjones') }
-        Hints = @('Double-click Administrators in the Groups folder to see its members', 'The list says this person is a standard user in Sales', 'answer bjones')
+        Check = { param($a) Test-Answer $a @('bjones', 'tempadmin') }
+        Hints = @('Double-click Administrators in the Groups folder to see its members', 'Only the accounts under "Administrators" in the list belong there', 'answer tempadmin   (bjones is also correct)')
     },
     @{
         Title = 'Local Users and Groups - fix Administrators'
-        Open  = 'lusrmgr.msc'
-        Task  = "Remove every Administrators member the list does not name as an admin.`n(select the member > Remove > OK)"
+        Open  = @('lusrmgr.msc')
+        Task  = "Remove BOTH members the list does not name as admins.`n(Groups > Administrators > select member > Remove > OK)`nKeep their user accounts for now."
         Type  = 'auto'
-        Check = {
+        Todo  = {
             $a = Get-AdminNames
-            ($a -notcontains 'tempadmin') -and ($a -notcontains 'bjones') -and
-                [bool](Get-LocalUser -Name 'bjones' -EA SilentlyContinue)
+            if ($a -contains 'tempadmin') { 'tempadmin is still in Administrators' }
+            if ($a -contains 'bjones') { 'bjones is still in Administrators' }
+            if (-not (Get-LocalUser -Name 'bjones' -EA SilentlyContinue)) {
+                'bjones (authorized) was deleted - type skip and tell a mentor'
+            }
         }
-        Hints = @('Only Administrator, student, and range accounts belong in this group', 'Two must go: a temporary admin and the sales user - keep their accounts for now', 'Remove tempadmin and bjones from Administrators')
+        Hints = @('Type check to see who is still left', 'One is a leftover temporary admin, the other is a Sales user', 'Remove tempadmin and bjones from Administrators')
     },
     @{
         Title = 'Local Users and Groups - former employee'
-        Open  = @('notepad C:\HardeningLab\hr_memo.txt', 'lusrmgr.msc')
+        Open  = @('hr_memo.txt on the Desktop   (or type: memo)', 'lusrmgr.msc')
         Task  = "Do exactly what the HR memo asks.`n(Users > double-click the user > General tab)"
         Type  = 'auto'
-        Check = {
+        Todo  = {
             $u = Get-LocalUser -Name 'jmiller' -EA SilentlyContinue
-            (-not $u) -or (-not $u.Enabled)
+            if ($u -and $u.Enabled) { 'jmiller is still enabled' }
         }
         Hints = @('The memo says keep the account, so do not delete it', 'There is a checkbox on the General tab for this', 'Open jmiller > tick "Account is disabled" > OK')
     },
     @{
         Title = 'Local Users and Groups - unauthorized accounts'
-        Open  = 'lusrmgr.msc'
-        Task  = "In Users, delete accounts that are not on the authorized list.`nLeave built-in accounts and the disabled HR-hold account."
+        Open  = @('lusrmgr.msc', 'authorized_users.txt on the Desktop   (or type: users)')
+        Task  = "In Users, delete every account that is NOT on the list.`nKEEP: everyone on the list, built-in accounts (Administrator, Guest,`nDefaultAccount, WDAGUtilityAccount), and the disabled HR-hold account."
         Type  = 'auto'
-        Check = {
-            foreach ($u in @('guestuser', 'tempadmin')) {
-                if (Get-LocalUser -Name $u -EA SilentlyContinue) { return $false }
-            }
+        Todo  = {
+            $left = @('guestuser', 'tempadmin' | Where-Object { Get-LocalUser -Name $_ -EA SilentlyContinue }).Count
+            if ($left) { "$left account(s) not on the list still exist" }
             foreach ($u in @('asmith', 'bjones', 'cwong')) {
-                if (-not (Get-LocalUser -Name $u -EA SilentlyContinue)) { return $false }
+                if (-not (Get-LocalUser -Name $u -EA SilentlyContinue)) { "$u is authorized but was deleted - type skip and tell a mentor" }
             }
-            $true
         }
-        Hints = @('Compare the Users folder with authorized_users.txt', 'One looks like a guest, one is a leftover temporary admin', 'Right-click guestuser and tempadmin > Delete > Yes')
+        Hints = @('Go down the Users folder one by one and look each name up in the list', 'Two accounts are not on the list: a guest-looking one and a leftover temporary admin', 'Right-click guestuser and tempadmin > Delete > Yes')
     },
     @{
         Title = 'Registry Editor - find a startup entry'
-        Open  = 'regedit'
+        Open  = @('regedit')
         Task  = "Go to HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Run`nWhich value starts a program from C:\ProgramData?  answer <value name>"
         Type  = 'answer'
         Check = { param($a) Test-Answer $a @('SysHealthUpdate') }
@@ -144,42 +168,51 @@ $Levels = @(
     },
     @{
         Title = 'Registry Editor - remove it'
-        Open  = 'regedit'
-        Task  = 'Delete that value. Leave every other value alone.'
+        Open  = @('regedit')
+        Task  = 'Delete the SysHealthUpdate value. Leave every other value alone.'
         Type  = 'auto'
-        Check = { [string]::IsNullOrEmpty((Get-ItemProperty $RunKey -EA SilentlyContinue).SysHealthUpdate) }
-        Hints = @('It is the value you named in the last step', 'Right-click the value > Delete > Yes', 'Delete SysHealthUpdate under ...\CurrentVersion\Run')
+        Todo  = {
+            if (-not [string]::IsNullOrEmpty((Get-ItemProperty $RunKey -EA SilentlyContinue).SysHealthUpdate)) {
+                'SysHealthUpdate is still in the Run key'
+            }
+        }
+        Hints = @('It is in the same Run key as the last step', 'Right-click the value > Delete > Yes', 'Delete SysHealthUpdate under ...\CurrentVersion\Run')
     },
     @{
         Title = 'Task Manager - end the process'
-        Open  = 'taskmgr'
-        Task  = "That startup entry already launched a program. Find it and end it.`n(More details > Details tab)"
+        Open  = @('taskmgr')
+        Task  = "SysHealthUpdate already started health_update.exe. End it.`n(More details > Details tab)"
         Type  = 'auto'
-        Check = { -not (Get-Process -Name 'health_update' -EA SilentlyContinue) }
-        Hints = @('Click the Name column to sort the Details tab', 'Its name matches the .exe in C:\ProgramData\SysHealth', 'Right-click health_update.exe > End task')
+        Todo  = {
+            if (Get-Process -Name 'health_update' -EA SilentlyContinue) { 'health_update.exe is still running' }
+        }
+        Hints = @('Click the Name column on the Details tab to sort it', 'It is listed as health_update.exe', 'Right-click health_update.exe > End task')
     },
     @{
         Title = 'Services - find the rogue service'
-        Open  = 'services.msc'
-        Task  = "One service runs a PowerShell script from C:\ProgramData.`nWhat is its Service name?  answer <service name>"
+        Open  = @('services.msc')
+        Task  = "One service runs a PowerShell script from C:\ProgramData.`nDouble-click it: what is its Service name?  answer <service name>"
         Type  = 'answer'
         Check = { param($a) Test-Answer $a @('SysCacheSvc', 'System Cache Service') }
-        Hints = @('Double-click a service: the General tab shows Service name and Path to executable', 'It has no description and a generic name with Cache in it', 'answer SysCacheSvc')
+        Hints = @('The list shows Display names; the Service name is at the top of the General tab', 'Its Display name is System Cache Service', 'answer SysCacheSvc')
     },
     @{
         Title = 'Services - disable it'
-        Open  = 'services.msc'
-        Task  = "Open that service: Stop it if it is running, set Startup type to Disabled, Apply."
+        Open  = @('services.msc')
+        Task  = "Open System Cache Service: set Startup type to Disabled, click Stop if`nit is running, then Apply."
         Type  = 'auto'
-        Check = {
+        Todo  = {
             $s = Get-Service -Name 'SysCacheSvc' -EA SilentlyContinue
-            (-not $s) -or ($s.StartType -eq 'Disabled' -and $s.Status -ne 'Running')
+            if ($s) {
+                if ($s.StartType -ne 'Disabled') { "Startup type is still $($s.StartType)" }
+                if ($s.Status -eq 'Running') { 'the service is still running' }
+            }
         }
         Hints = @('Startup type is a dropdown on the General tab', 'Choose Disabled - Manual still lets it start', 'System Cache Service > Startup type: Disabled > Apply')
     },
     @{
         Title = 'Windows Firewall - find the bad rule'
-        Open  = 'wf.msc'
+        Open  = @('wf.msc')
         Task  = "Look at Inbound Rules. One enabled rule is for remote support.`nWhich local port does it open?  answer <port>"
         Type  = 'answer'
         Check = { param($a) Test-Answer $a @('5555', 'tcp 5555', '5555/tcp') }
@@ -187,31 +220,44 @@ $Levels = @(
     },
     @{
         Title = 'Windows Firewall - remove it'
-        Open  = 'wf.msc'
-        Task  = "Disable or delete that rule. Do NOT touch 'DCIG Lab RDP Access'."
+        Open  = @('wf.msc')
+        Task  = "Disable or delete 'Remote Admin Support'. Do NOT touch 'DCIG Lab RDP Access'."
         Type  = 'auto'
-        Check = {
+        Todo  = {
             $r = Get-NetFirewallRule -DisplayName 'Remote Admin Support' -EA SilentlyContinue
-            (-not $r) -or (@($r | Where-Object { $_.Enabled -eq 'True' }).Count -eq 0)
+            if ($r -and @($r | Where-Object { $_.Enabled -eq 'True' }).Count -gt 0) { 'Remote Admin Support is still enabled' }
         }
         Hints = @('Right-click the rule in Inbound Rules', 'Disable Rule or Delete both work', 'Right-click Remote Admin Support > Disable Rule')
     },
     @{
         Title = 'Windows Security - antivirus'
-        Open  = 'start windowsdefender:'
-        Task  = "Virus and threat protection > Manage settings: turn Real-time protection On.`n(Also reachable: Settings > Update and Security > Windows Security)"
+        Open  = @('start windowsdefender:')
+        Task  = "Virus and threat protection > Manage settings: turn Real-time protection On.`n(Also reachable: Start > Settings > Update and Security > Windows Security)"
         Type  = 'auto'
-        Check = { try { -not (Get-MpPreference).DisableRealtimeMonitoring } catch { $false } }
+        Todo  = {
+            $on = $false
+            try { $on = [bool](Get-MpComputerStatus -EA Stop).RealTimeProtectionEnabled } catch { }
+            if (-not $on) {
+                try { $on = -not (Get-MpPreference -EA Stop).DisableRealtimeMonitoring } catch { }
+            }
+            if (-not $on) { 'Real-time protection is still off' }
+        }
         Hints = @('Click Virus and threat protection, then Manage settings under its settings heading', 'Real-time protection is the first toggle; if it is greyed out, ask a mentor', 'Toggle Real-time protection to On (PowerShell: Set-MpPreference -DisableRealtimeMonitoring $false)')
     }
 )
 
+function Get-Todo {
+    $L = $Levels[$script:Level - 1]
+    if ($L.Type -ne 'auto') { return @() }
+    try { return @(& $L.Todo | Where-Object { $_ }) } catch { return @('could not check yet') }
+}
+
 function Test-Current([string]$Answer) {
     $L = $Levels[$script:Level - 1]
-    try {
-        if ($L.Type -eq 'answer') { return [bool](& $L.Check $Answer) }
-        return [bool](& $L.Check)
-    } catch { return $false }
+    if ($L.Type -eq 'answer') {
+        try { return [bool](& $L.Check $Answer) } catch { return $false }
+    }
+    return (@(Get-Todo).Count -eq 0)
 }
 
 function Show-Line { Write-Host ('-' * 60) -ForegroundColor DarkGray }
@@ -225,8 +271,10 @@ function Show-Banner {
 
 function Show-Help {
     Show-Line
-    Write-Host '  task  hint  answer X  skip  progress  scoreboard  quit' -ForegroundColor Yellow
-    Write-Host '  Type an Open line here to launch that tool. Fix steps pass by themselves.' -ForegroundColor DarkGray
+    Write-Host '  task  hint  check  answer X  skip  progress  scoreboard  quit' -ForegroundColor Yellow
+    Write-Host '  briefing  users  memo   open the lab files from the Desktop' -ForegroundColor Yellow
+    Write-Host '  Type an Open line here or in Start > Run (Win+R) to launch the tool.' -ForegroundColor DarkGray
+    Write-Host '  Fix steps pass by themselves; type check to see what is left.' -ForegroundColor DarkGray
     Show-Line
 }
 
@@ -246,8 +294,17 @@ function Show-Task {
         if ($first) { Write-Host ("  Task  {0}" -f $t); $first = $false }
         else { Write-Host ("        {0}" -f $t) }
     }
-    if ($L.Type -eq 'auto') { Write-Host '        (passes automatically once fixed)' -ForegroundColor DarkGray }
+    if ($L.Type -eq 'auto') { Write-Host '        (passes automatically once fixed - type check to see what is left)' -ForegroundColor DarkGray }
     Show-Line
+}
+
+function Show-Check {
+    $L = $Levels[$script:Level - 1]
+    if ($L.Type -ne 'auto') { Write-Host '  This step needs: answer <x>' -ForegroundColor Yellow; return $false }
+    $todo = @(Get-Todo)
+    if ($todo.Count -eq 0) { return $true }
+    foreach ($t in $todo) { Write-Host ("  Still to do: {0}" -f $t) -ForegroundColor Yellow }
+    return $false
 }
 
 function Show-Hint {
@@ -275,16 +332,16 @@ function Advance {
     Show-Task
 }
 
-# Waits for typing, but re-checks 'auto' steps every few seconds so a fix made in a
-# GUI tool advances the quest without coming back to type anything.
+# Waits for typing, but re-checks 'auto' steps every couple of seconds so a fix made in
+# a GUI tool advances the quest without coming back to type anything.
 function Read-QuestLine {
     try {
-        $next = (Get-Date).AddSeconds(3)
+        $next = (Get-Date).AddSeconds(2)
         while (-not [Console]::KeyAvailable) {
             Start-Sleep -Milliseconds 250
             if ((Get-Date) -ge $next) {
                 if ($Levels[$script:Level - 1].Type -eq 'auto' -and (Test-Current '')) { return $null }
-                $next = (Get-Date).AddSeconds(3)
+                $next = (Get-Date).AddSeconds(2)
             }
         }
     } catch { }
@@ -325,7 +382,7 @@ function Finish-Quest {
     Write-Host ''
 
     if ($ready) {
-        Write-Host '  Phase 2 is ready. Read C:\HardeningLab\PHASE2.txt and start hardening.' -ForegroundColor Green
+        Write-Host '  Phase 2 is ready. Read PHASE2.txt on the Desktop and start hardening.' -ForegroundColor Green
     } else {
         Write-Host '  Phase 2 prep is still running - ask a mentor if this does not finish.' -ForegroundColor Yellow
     }
@@ -355,6 +412,10 @@ Show-Task
         '^help$' { Show-Help; continue }
         '^task$' { Show-Task; continue }
         '^hint$' { Show-Hint; continue }
+        '^check$' { if (Show-Check) { Advance }; continue }
+        '^briefing(\.txt)?$' { Open-LabFile 'briefing.txt'; continue }
+        '^users$|^authorized(_users)?(\.txt)?$' { Open-LabFile 'authorized_users.txt'; continue }
+        '^(hr_)?memo(\.txt)?$' { Open-LabFile 'hr_memo.txt'; continue }
         '^scoreboard$' { Show-Scoreboard; continue }
         '^progress$' {
             Write-Host ("  Step {0}/{1}  Score {2}" -f $script:Level, $Levels.Count, $script:Score)
@@ -370,7 +431,7 @@ Show-Task
         '^answer\s+(.+)$' {
             $ans = $Matches[1]
             if ($Levels[$script:Level - 1].Type -ne 'answer') {
-                Write-Host '  This step passes by itself once the system is fixed.' -ForegroundColor Yellow
+                Write-Host '  This step passes by itself once the system is fixed (type check).' -ForegroundColor Yellow
                 continue
             }
             if (Test-Current $ans) { Advance }

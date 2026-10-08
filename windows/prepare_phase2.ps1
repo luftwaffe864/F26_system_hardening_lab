@@ -75,7 +75,8 @@ Remove-Item 'C:\ProgramData\SysCache' -Recurse -Force -EA SilentlyContinue
 # Unscored Phase-1 account leftovers would clutter the race; authorized staff stay
 foreach ($u in @('tempadmin', 'guestuser', 'jmiller')) { Remove-LocalUser -Name $u -EA SilentlyContinue }
 Remove-LocalGroupMember -Group 'Administrators' -Member 'bjones' -EA SilentlyContinue
-Remove-Item (Join-Path $LabRoot 'hr_memo.txt') -Force -EA SilentlyContinue
+$PubDesk = Join-Path $env:PUBLIC 'Desktop'
+Remove-Item (Join-Path $LabRoot 'hr_memo.txt'), (Join-Path $PubDesk 'hr_memo.txt') -Force -EA SilentlyContinue
 
 # ========== EASY ==========
 # W2-02 Guest enabled (Windows built-in weak account)
@@ -227,7 +228,7 @@ Phase 2 is ready on this Windows box (Team $Team).
 
 Fix the MACHINE. The score agent checks system
 state about once a minute - you do NOT type answers into a prompt.
-Authorized accounts are still listed in C:\HardeningLab\authorized_users.txt.
+Authorized accounts are still listed in authorized_users.txt on the Desktop.
 
 Windows-focused categories (easy -> hard):
   - Built-in / leftover local accounts
@@ -249,6 +250,7 @@ Keep RDP working: port 3389 stays allowed. Do not rename or delete the student a
 
 Mentors open the room scoreboard when the race starts.
 "@ | Set-Content (Join-Path $LabRoot 'PHASE2.txt') -Encoding ASCII
+Copy-Item (Join-Path $LabRoot 'PHASE2.txt') (Join-Path $PubDesk 'PHASE2.txt') -Force -EA SilentlyContinue
 
 $ensure = Join-Path $LabRoot 'Ensure-LabAccess.ps1'
 if (Test-Path $ensure) {

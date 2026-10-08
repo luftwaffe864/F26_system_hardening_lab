@@ -121,17 +121,56 @@ function Get-TeamId {
     return '00'
 }
 
+# Undo everything prepare_phase2.ps1 plants so a reset box shows only Phase-1 content.
+function Remove-Phase2Plants {
+    cmd /c "schtasks /Delete /TN HardeningScoreAgent /F >nul 2>&1" | Out-Null
+    foreach ($u in @('tempvendor', 'contractor')) { Remove-LocalUser -Name $u -EA SilentlyContinue }
+    Disable-LocalUser -Name 'Guest' -EA SilentlyContinue
+    $ifeo = 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options\sethc.exe'
+    Remove-ItemProperty -Path $ifeo -Name 'Debugger' -EA SilentlyContinue
+    try { Remove-SmbShare -Name 'TeamDrop' -Force -EA SilentlyContinue } catch {}
+    Remove-Item 'C:\Shares' -Recurse -Force -EA SilentlyContinue
+    Set-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System' -Name 'EnableLUA' -Value 1 -EA SilentlyContinue
+    $rdp = 'HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp'
+    Set-ItemProperty -Path $rdp -Name 'UserAuthentication' -Value 1 -EA SilentlyContinue
+    Remove-NetFirewallRule -DisplayName 'Temp SNMP Access' -EA SilentlyContinue
+    foreach ($root in @('HKLM:', 'HKCU:')) {
+        Remove-ItemProperty -Path "$root\SOFTWARE\Policies\Microsoft\Windows\Installer" -Name 'AlwaysInstallElevated' -EA SilentlyContinue
+    }
+    $wl = 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon'
+    Set-ItemProperty -Path $wl -Name 'AutoAdminLogon' -Value '0' -EA SilentlyContinue
+    Remove-ItemProperty -Path $wl -Name 'DefaultPassword' -EA SilentlyContinue
+    if ((Get-ItemProperty $wl -EA SilentlyContinue).DefaultUserName -eq 'contractor') {
+        Remove-ItemProperty -Path $wl -Name 'DefaultUserName' -EA SilentlyContinue
+    }
+    Remove-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\SecurityProviders\WDigest' -Name 'UseLogonCredential' -EA SilentlyContinue
+    Set-Service -Name 'RemoteRegistry' -StartupType Manual -EA SilentlyContinue
+    Stop-Service -Name 'RemoteRegistry' -Force -EA SilentlyContinue
+    Set-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Lsa' -Name 'LmCompatibilityLevel' -Value 3 -EA SilentlyContinue
+    try { Set-Item -Path WSMan:\localhost\Service\AllowUnencrypted -Value $false -Force -EA SilentlyContinue } catch {}
+    foreach ($svc in @('VendorUpd', 'HLPrintHelp')) {
+        cmd /c "sc.exe stop $svc >nul 2>&1"
+        cmd /c "sc.exe delete $svc >nul 2>&1"
+    }
+    Remove-Item 'C:\Program Files\Vendor Update', 'C:\ProgramData\PrintNotifyHelper' -Recurse -Force -EA SilentlyContinue
+    Remove-Item (Join-Path $LabRoot 'PHASE2.txt'), (Join-Path $env:PUBLIC 'Desktop\PHASE2.txt') -Force -EA SilentlyContinue
+}
+
 Assert-Admin
 $Team = Get-TeamId
 
 if ($Uninstall) {
     Step 'Uninstall Phase-1 artifacts'
+    Remove-Phase2Plants
+    foreach ($f in @('briefing.txt', 'authorized_users.txt', 'hr_memo.txt')) {
+        Remove-Item (Join-Path $env:PUBLIC "Desktop\$f") -Force -EA SilentlyContinue
+    }
     Get-Process -Name 'health_update' -EA SilentlyContinue | Stop-Process -Force -EA SilentlyContinue
     Remove-ItemProperty -Path $RunKey -Name 'SysHealthUpdate' -EA SilentlyContinue
     Remove-NetFirewallRule -DisplayName 'Remote Admin Support' -EA SilentlyContinue
     cmd /c "sc.exe stop SysCacheSvc >nul 2>&1"
     cmd /c "sc.exe delete SysCacheSvc >nul 2>&1"
-    foreach ($d in @($Rogue, $Bloat, $LabRoot, 'C:\ProgramData\SysCache')) {
+    foreach ($d in @($Rogue, $Bloat, $LabRoot, 'C:\ProgramData\SysCache', 'C:\CaseFiles')) {
         if (Test-Path $d) { Remove-Item $d -Recurse -Force -EA SilentlyContinue }
     }
     foreach ($u in @('tempadmin','guestuser','jmiller','asmith','bjones','cwong')) {
@@ -145,7 +184,9 @@ Step "Phase 1 setup on $env:COMPUTERNAME (Team $Team)"
 Enable-LabWeakPasswords
 
 # dirs + config
-New-Item -ItemType Directory -Force -Path $Cfg, $Rogue, $Bloat, (Join-Path $LabRoot 'bin') | Out-Null
+New-Item -ItemType Directory -Force -Path $Cfg, $Rogue, (Join-Path $LabRoot 'bin') | Out-Null
+$PubDesk = Join-Path $env:PUBLIC 'Desktop'
+New-Item -ItemType Directory -Force -Path $PubDesk | Out-Null
 Set-Content -Path (Join-Path $Cfg 'secret.txt') -Value $Secret -Encoding ASCII
 Set-Content -Path (Join-Path $Cfg 'scoreboard_url.txt') -Value $ScoreboardUrl -Encoding ASCII
 Set-Content -Path (Join-Path $Cfg 'team.txt') -Value $Team -Encoding ASCII
@@ -168,10 +209,12 @@ foreach ($qd in $questDirs) {
 }
 Remove-Item -Force -EA SilentlyContinue @(
     (Join-Path $Cfg 'phase2_auto_done.flag'),
-    (Join-Path $Cfg 'start_phase2.flag'),
-    (Join-Path $LabRoot 'PHASE2.txt')
+    (Join-Path $Cfg 'start_phase2.flag')
 )
-Say 'reset quest progress + Phase-2 flags (ready for a fresh Phase 1 run)'
+Remove-Phase2Plants
+# Older builds planted these; neither the quest nor the scorer uses them
+Remove-Item $Bloat, 'C:\CaseFiles' -Recurse -Force -EA SilentlyContinue
+Say 'reset quest progress + removed any Phase-2 plants (ready for a fresh Phase 1 run)'
 
 # copy scripts next to lab root if present beside this file
 $here = Split-Path -Parent $MyInvocation.MyCommand.Path
@@ -260,7 +303,9 @@ Built-in Windows accounts (Administrator, Guest, DefaultAccount,
 WDAGUtilityAccount) are system accounts - do not delete them.
 Former employees under an HR hold may remain, but only if disabled.
 "@
-Set-Content -Path (Join-Path $LabRoot 'authorized_users.txt') -Value $auth -Encoding ASCII
+foreach ($d in @($LabRoot, $PubDesk)) {
+    Set-Content -Path (Join-Path $d 'authorized_users.txt') -Value $auth -Encoding ASCII
+}
 
 $memo = @"
 HR NOTICE - account action required
@@ -270,7 +315,9 @@ Status:    Terminated - last day 2026-09-30
 Action:    Disable the account now. Do NOT delete it - Legal needs it
            kept for 90 days.
 "@
-Set-Content -Path (Join-Path $LabRoot 'hr_memo.txt') -Value $memo -Encoding ASCII
+foreach ($d in @($LabRoot, $PubDesk)) {
+    Set-Content -Path (Join-Path $d 'hr_memo.txt') -Value $memo -Encoding ASCII
+}
 
 # briefing
 $brief = @"
@@ -278,16 +325,15 @@ DCIG System Hardening - Windows box
 Hostname: $env:COMPUTERNAME
 Team: $Team
 
-Authorized accounts: C:\HardeningLab\authorized_users.txt
-HR notices:          C:\HardeningLab\hr_memo.txt
+On your Desktop:
+  authorized_users.txt   who should have an account, and who should be admin
+  hr_memo.txt            HR notices
 
 Lab note: keep RDP (port 3389) working and do not change the student account.
 "@
-Set-Content -Path (Join-Path $LabRoot 'briefing.txt') -Value $brief -Encoding ASCII
-
-# fake bloat
-Set-Content -Path (Join-Path $Bloat 'PCOptimizer.exe.txt') -Value 'Fake bloatware placeholder - delete this folder.' -Encoding ASCII
-New-Item -ItemType Directory -Force -Path (Join-Path $Bloat 'Plugins') | Out-Null
+foreach ($d in @($LabRoot, $PubDesk)) {
+    Set-Content -Path (Join-Path $d 'briefing.txt') -Value $brief -Encoding ASCII
+}
 
 # rogue binary + run key (harmless loop via powershell copy)
 $burn = Join-Path $Rogue 'burn.ps1'
@@ -346,13 +392,6 @@ try {
 } catch {
     Warn "could not disable Defender RTP: $($_.Exception.Message)"
 }
-
-# world-readable secrets file
-$secFile = 'C:\CaseFiles\keys.txt'
-New-Item -ItemType Directory -Force -Path 'C:\CaseFiles' | Out-Null
-Set-Content -Path $secFile -Value 'API_KEY=windows-demo-key-not-real' -Encoding ASCII
-icacls $secFile /grant Everyone:F | Out-Null
-Say 'planted C:\CaseFiles\keys.txt (Everyone full)'
 
 # helper launcher + Desktop icon (double-click starts quest; finish auto-runs Phase 2)
 New-Item -ItemType Directory -Force -Path (Join-Path $LabRoot 'bin') | Out-Null
