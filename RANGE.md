@@ -73,7 +73,7 @@ Progress-only (skip re-plant — quest starts at level 1, findings stay as-is):
 
 ```bash
 sudo salt 'dcig-syslab-team30-ubuntu' cmd.run 'rm -rf /home/student/.hardening-quest'
-sudo salt 'win19_srv30' cmd.run 'Remove-Item -Recurse -Force C:\Users\student\AppData\Local\HardeningQuest -EA SilentlyContinue' shell=powershell
+sudo salt 'win19_srv30' cmd.run 'Remove-Item -Recurse -Force C:\HardeningLab\config\quest -EA SilentlyContinue' shell=powershell
 ```
 
 Optional scoreboard wipe (**all teams**):

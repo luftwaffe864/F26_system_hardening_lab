@@ -157,10 +157,13 @@ icacls $Cfg /grant 'Users:(OI)(CI)(M)' /T | Out-Null
 icacls $LabRoot /grant 'Users:(OI)(CI)(RX)' /T | Out-Null
 
 # Clear prior quest progress + Phase-2 markers so mentors can re-test after re-apply
-foreach ($qd in @(
-    (Join-Path $env:LOCALAPPDATA 'HardeningQuest'),
-    'C:\Users\student\AppData\Local\HardeningQuest'
-)) {
+$questDirs = @(
+    (Join-Path $Cfg 'quest'),
+    (Join-Path $env:LOCALAPPDATA 'HardeningQuest')
+)
+$questDirs += Get-ChildItem 'C:\Users\*\AppData\Local\HardeningQuest' -Directory -Force -EA SilentlyContinue |
+    ForEach-Object { $_.FullName }
+foreach ($qd in $questDirs) {
     Remove-Item -LiteralPath $qd -Recurse -Force -EA SilentlyContinue
 }
 Remove-Item -Force -EA SilentlyContinue @(

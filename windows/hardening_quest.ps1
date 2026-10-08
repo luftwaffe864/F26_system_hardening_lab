@@ -29,7 +29,8 @@ if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administra
 
 $LabRoot = 'C:\HardeningLab'
 $Cfg     = Join-Path $LabRoot 'config'
-$StateDir = Join-Path $env:LOCALAPPDATA 'HardeningQuest'
+# Machine-wide, not per-profile: elevation may run the quest under a different account
+$StateDir = Join-Path $Cfg 'quest'
 $Progress = Join-Path $StateDir 'progress.txt'
 $ScoreFile = Join-Path $StateDir 'score.txt'
 $RunKey = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run'

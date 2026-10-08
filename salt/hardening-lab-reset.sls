@@ -8,7 +8,7 @@
  #
  # Progress-only (no re-plant) — from the master:
  #   sudo salt 'dcig-syslab-team30-ubuntu' cmd.run 'rm -rf /home/student/.hardening-quest'
- #   sudo salt 'win19_srv30' cmd.run 'Remove-Item -Recurse -Force C:\Users\student\AppData\Local\HardeningQuest -EA SilentlyContinue' shell=powershell
+ #   sudo salt 'win19_srv30' cmd.run 'Remove-Item -Recurse -Force C:\HardeningLab\config\quest -EA SilentlyContinue' shell=powershell
  #}
 {% set role = salt['grains.get']('role', '') %}
 {% set is_windows = salt['grains.get']('os') == 'Windows' or salt['grains.get']('kernel') == 'Windows' %}
