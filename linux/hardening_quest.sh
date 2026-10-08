@@ -62,8 +62,8 @@ auto "systemctl list-units --type=service --state=running|Its name has 'cache' i
 
 add_level "cron + rm — persistence" \
 "Tool  ls /etc/cron.d    cat <file>    sudo rm [-rf] <path>
-Task  A fake cleaner runs from cron. Delete the cron job and the program it runs." \
-auto "ls /etc/cron.d then cat the odd file|The job runs something under /opt|sudo rm -f /etc/cron.d/pccleaner && sudo rm -rf /opt/PCCleaner"
+Task  A fake cleaner runs from cron. Find its cron job and delete it." \
+auto "ls /etc/cron.d - one file there is not a normal system job|cat it to confirm it runs something under /opt|sudo rm /etc/cron.d/pccleaner   (optional: sudo rm -rf /opt/PCCleaner)"
 
 add_level "ufw — default deny firewall" \
 "Tool  sudo ufw default <allow|deny> incoming
@@ -107,10 +107,10 @@ check_1() { [[ "$(norm "$1")" == "$(norm "$TEAM_NN")" ]]; }
 check_2() { [[ "$(norm "$1")" == "tempadmin" ]]; }
 check_3() { [[ "$(norm "$1")" == "9999" ]]; }
 check_4() { ! svc_active cache-sync && ! svc_enabled cache-sync; }
-# Program gone (empty folder is fine) and no cron entry still pointing at it.
+# Passes once no cron entry points at PCCleaner (deleting the program is optional).
 check_5() {
-  [[ ! -e /opt/PCCleaner/pccleaner.sh ]] &&
-    ! grep -rqs 'PCCleaner' /etc/cron.d /etc/crontab 2>/dev/null
+  [[ ! -e /etc/cron.d/pccleaner ]] &&
+    ! grep -rqis 'pccleaner' /etc/cron.d /etc/crontab 2>/dev/null
 }
 check_6() {
   local s; s="$(as_root ufw status verbose 2>/dev/null)" || return 1
