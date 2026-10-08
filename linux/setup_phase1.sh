@@ -285,8 +285,18 @@ plant_firewall() {
 packages() {
   export DEBIAN_FRONTEND=noninteractive
   apt-get update -qq >/dev/null 2>&1 || true
+  # Full vim + nano: vim-tiny runs in vi-compatible mode where arrow keys type A/B/C/D
   apt-get install -y -qq curl python3 ufw cron procps psmisc iproute2 \
-    openssh-server libpam-pwquality >/dev/null 2>&1 || true
+    openssh-server libpam-pwquality nano vim >/dev/null 2>&1 || true
+  install -d -m 755 /etc/vim
+  cat > /etc/vim/vimrc.local <<'EOF'
+" DCIG lab: arrow keys, backspace, and line numbers behave as expected
+set nocompatible
+set backspace=indent,eol,start
+set number
+EOF
+  # Offline boxes keep vim-tiny, which ignores vimrc.local
+  [[ -f /etc/vim/vimrc.tiny ]] && sed -i 's/^\s*set compatible/set nocompatible/' /etc/vim/vimrc.tiny || true
 }
 
 main() {

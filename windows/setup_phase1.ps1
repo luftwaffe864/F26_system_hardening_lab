@@ -153,7 +153,9 @@ function Remove-Phase2Plants {
         cmd /c "sc.exe delete $svc >nul 2>&1"
     }
     Remove-Item 'C:\Program Files\Vendor Update', 'C:\ProgramData\PrintNotifyHelper' -Recurse -Force -EA SilentlyContinue
-    Remove-Item (Join-Path $LabRoot 'PHASE2.txt'), (Join-Path $env:PUBLIC 'Desktop\PHASE2.txt') -Force -EA SilentlyContinue
+    Remove-Item (Join-Path $LabRoot 'PHASE2.txt'), (Join-Path $env:PUBLIC 'Desktop\PHASE2.txt'),
+        (Join-Path $LabRoot 'phase2-status.txt') -Force -EA SilentlyContinue
+    Remove-Item (Join-Path $LabRoot 'score_state') -Recurse -Force -EA SilentlyContinue
 }
 
 Assert-Admin
@@ -380,10 +382,20 @@ try {
     Warn "could not create SysCacheSvc (close services.msc and re-run): $($_.Exception.Message)"
 }
 
-# firewall rule
-New-NetFirewallRule -DisplayName 'Remote Admin Support' -Direction Inbound `
-    -Action Allow -Protocol TCP -LocalPort 5555 -Profile Any -EA SilentlyContinue | Out-Null
-Say 'planted firewall rule Remote Admin Support (TCP 5555)'
+# firewall rule (re-created fresh so a reset always shows exactly one enabled copy)
+Remove-NetFirewallRule -DisplayName 'Remote Admin Support' -EA SilentlyContinue
+try {
+    New-NetFirewallRule -DisplayName 'Remote Admin Support' -Direction Inbound -Action Allow `
+        -Protocol TCP -LocalPort 5555 -Profile Any -Enabled True `
+        -Description 'Vendor remote support listener' -EA Stop | Out-Null
+} catch {
+    cmd /c 'netsh advfirewall firewall add rule name="Remote Admin Support" dir=in action=allow protocol=TCP localport=5555 profile=any enable=yes >nul 2>&1' | Out-Null
+}
+if (Get-NetFirewallRule -DisplayName 'Remote Admin Support' -EA SilentlyContinue) {
+    Say 'planted firewall rule Remote Admin Support (TCP 5555)'
+} else {
+    Warn 'could NOT create firewall rule Remote Admin Support - quest step 11 will re-plant it'
+}
 
 # Defender real-time off (best effort - may be managed)
 try {

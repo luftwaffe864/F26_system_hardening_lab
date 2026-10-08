@@ -5,6 +5,9 @@
 # =============================================================================
 set -o pipefail
 
+# nano/vim misread arrow keys when TERM is missing (web consoles, su -c, desktop launchers)
+case "${TERM:-}" in ""|dumb|unknown) export TERM=xterm-256color ;; esac
+
 CFG=/etc/hardening-lab
 LIB=/usr/local/lib/hardening-lab
 H="${HOME:-/home/student}"
@@ -69,12 +72,14 @@ add_level "ufw — default deny firewall" \
 Task  Block all incoming traffic except SSH (22) and web (80), then turn ufw on." \
 auto "sudo ufw default deny incoming|sudo ufw allow 22/tcp && sudo ufw allow 80/tcp|sudo ufw --force enable  (--force skips the y/n prompt)"
 
-add_level "sudoers — least privilege" \
-"Tool  sudo visudo -f /etc/sudoers.d/<name>   (checks syntax before saving)
-      <user> ALL=(root) /full/path/to/command args
-      sudo -l -U <user>
-Task  backupop may ONLY run: systemctl restart cron  as root. Nothing else." \
-auto "which systemctl gives the full path|sudo visudo -f /etc/sudoers.d/backupop|Add the line: backupop ALL=(root) /usr/bin/systemctl restart cron"
+add_level "sudoers — give one user one command" \
+"Task  User backupop has NO sudo rights. Give it permission to run exactly one
+      command with sudo:   systemctl restart cron
+      Do NOT add backupop to the sudo group (that would allow everything).
+Tool  sudo visudo -f /etc/sudoers.d/backupop   (opens an editor; save: Ctrl+O Enter Ctrl+X)
+      Rule format:  <user> ALL=(root) /full/path/to/command args
+      sudo -l -U backupop                      (shows what backupop may run)" \
+auto "Step 1: run  which systemctl  to get its full path|Step 2: sudo visudo -f /etc/sudoers.d/backupop, type ONE rule line, save and exit|Put this single line in the file: backupop ALL=(root) /usr/bin/systemctl restart cron"
 
 add_level "passwd — disable root" \
 "Tool  sudo passwd -S <user>    (P = usable password, L = locked)
@@ -102,7 +107,11 @@ check_1() { [[ "$(norm "$1")" == "$(norm "$TEAM_NN")" ]]; }
 check_2() { [[ "$(norm "$1")" == "tempadmin" ]]; }
 check_3() { [[ "$(norm "$1")" == "9999" ]]; }
 check_4() { ! svc_active cache-sync && ! svc_enabled cache-sync; }
-check_5() { [[ ! -e /opt/PCCleaner ]] && [[ ! -e /etc/cron.d/pccleaner ]]; }
+# Program gone (empty folder is fine) and no cron entry still pointing at it.
+check_5() {
+  [[ ! -e /opt/PCCleaner/pccleaner.sh ]] &&
+    ! grep -rqs 'PCCleaner' /etc/cron.d /etc/crontab 2>/dev/null
+}
 check_6() {
   local s; s="$(as_root ufw status verbose 2>/dev/null)" || return 1
   grep -qi '^Status: active' <<<"$s" &&
@@ -150,8 +159,20 @@ banner() {
 
 show_help() {
   line
-  say "  ${C}task${N}  ${C}hint${N}  ${C}answer X${N}  ${C}skip${N}  ${C}progress${N}  ${C}scoreboard${N}  ${C}quit${N}"
-  say "  ${DIM}Anything else runs as a normal shell command.${N}"
+  say "  ${C}task${N}  ${C}hint${N}  ${C}check${N}  ${C}answer X${N}  ${C}skip${N}  ${C}progress${N}  ${C}scoreboard${N}  ${C}quit${N}"
+  say "  ${C}keys${N}  ${DIM}nano / vim shortcuts (if arrow keys misbehave)${N}"
+  say "  ${DIM}Anything else runs as a normal shell command. Fix drills pass on their own.${N}"
+  line
+}
+
+show_keys() {
+  line
+  say "  ${BOLD}nano${N}  Ctrl+A start of line   Ctrl+E end of line   Ctrl+W search"
+  say "        Alt+\\ top of file   Alt+/ end of file   Ctrl+_ go to line number"
+  say "        Ctrl+O Enter = save   Ctrl+X = exit   Ctrl+K cut line   Ctrl+U paste"
+  say "  ${BOLD}vim${N}   i insert   Esc stop inserting   h j k l = left down up right"
+  say "        0 start of line   \$ end of line   A append at end of line"
+  say "        /text search   :42 go to line 42   :wq save+quit   :q! quit, no save"
   line
 }
 
@@ -193,6 +214,28 @@ advance() {
 try_auto() {
   [[ "${L_TYPE[$((LEVEL - 1))]}" == "auto" ]] || return 0
   "check_$LEVEL" && advance
+}
+
+is_auto() { [[ "${L_TYPE[$((LEVEL - 1))]}" == "auto" ]]; }
+
+prompt() { printf '%s hardening:%s%s%s> %s' "$DIM" "$N" "$C" "$LEVEL" "$N"; }
+
+# Waits for a line, re-checking 'auto' drills every few seconds so a fix made in
+# another terminal (or a long editor session) still advances the quest. The tty is
+# line-buffered, so a timeout never eats half-typed input.
+read_cmd() {
+  local rc
+  prompt
+  while true; do
+    IFS= read -r -t 3 cmd <"$QUEST_IN" && return 0
+    rc=$?
+    (( rc > 128 )) || return 1
+    if is_auto && "check_$LEVEL" >/dev/null 2>&1; then
+      say ""
+      advance
+      prompt
+    fi
+  done
 }
 
 try_answer() {
@@ -250,13 +293,17 @@ QUEST_IN=/dev/tty
 [[ -r "$QUEST_IN" ]] || QUEST_IN=/dev/stdin
 
 while true; do
-  printf '%s hardening:%s%s%s> %s' "$DIM" "$N" "$C" "$LEVEL" "$N"
-  IFS= read -r cmd <"$QUEST_IN" || { say ""; break; }
+  read_cmd || { say ""; break; }
   case "$cmd" in
-    "" ) continue ;;
+    "" ) try_auto ;;
     help ) show_help ;;
     task ) show_task ;;
     hint ) show_hint ;;
+    keys ) show_keys ;;
+    check )
+      if ! is_auto; then warn "This drill needs: answer <value>"
+      elif "check_$LEVEL"; then advance
+      else warn "Not fixed yet - keep going or type hint."; fi ;;
     scoreboard ) show_scoreboard ;;
     progress )
       line; say "  Drill $LEVEL / $TOTAL   Score $SCORE"; line ;;

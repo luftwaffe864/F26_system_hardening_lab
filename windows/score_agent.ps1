@@ -44,9 +44,16 @@ function Test-FwGoneOrOff([string]$DisplayName) {
     return (-not $r -or (@($r | Where-Object Enabled -eq 'True').Count -eq 0))
 }
 
+# Get-LocalGroupMember throws on orphaned SIDs on some Server 2019 builds; net.exe does not.
 function Get-AdminNames {
-    Get-LocalGroupMember Administrators -EA SilentlyContinue |
-        ForEach-Object { $_.Name.Split('\')[-1].ToLower() }
+    $out = cmd /c 'net localgroup Administrators' 2>$null
+    $inList = $false
+    foreach ($l in $out) {
+        if ($l -match '^-{5,}') { $inList = $true; continue }
+        if (-not $inList) { continue }
+        if ($l -match '^The command completed') { break }
+        if ($l.Trim()) { $l.Trim().Split('\')[-1].ToLower() }
+    }
 }
 
 # --- EASY ---
@@ -91,9 +98,13 @@ if ($nla -eq 1) { Post-Finding 'W2-03' 15 }
 if (Test-FwGoneOrOff 'Temp SNMP Access') { Post-Finding 'W2-05' 15 }
 
 # W2-06 Defender real-time on
+# A failed query must not count as "on"
 try {
-    $p = Get-MpPreference
-    if (-not $p.DisableRealtimeMonitoring) { Post-Finding 'W2-06' 15 }
+    $p = Get-MpPreference -EA Stop
+    $s = Get-MpComputerStatus -EA SilentlyContinue
+    if ($p -and $p.DisableRealtimeMonitoring -eq $false -and (-not $s -or $s.RealTimeProtectionEnabled)) {
+        Post-Finding 'W2-06' 15
+    }
 } catch {}
 
 # W2-08 AlwaysInstallElevated cleared in both hives (missing or 0)

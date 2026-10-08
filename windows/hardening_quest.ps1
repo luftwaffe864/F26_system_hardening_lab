@@ -213,10 +213,21 @@ $Levels = @(
     @{
         Title = 'Windows Firewall - find the bad rule'
         Open  = @('wf.msc')
-        Task  = "Look at Inbound Rules. One enabled rule is for remote support.`nWhich local port does it open?  answer <port>"
+        Task  = "Click Inbound Rules. One enabled rule is for remote support.`nWhich local port does it open?  answer <port>"
         Type  = 'answer'
+        Prep  = {
+            if (-not (Get-NetFirewallRule -DisplayName 'Remote Admin Support' -EA SilentlyContinue)) {
+                try {
+                    New-NetFirewallRule -DisplayName 'Remote Admin Support' -Direction Inbound -Action Allow `
+                        -Protocol TCP -LocalPort 5555 -Profile Any -Enabled True `
+                        -Description 'Vendor remote support listener' -EA Stop | Out-Null
+                } catch {
+                    cmd /c 'netsh advfirewall firewall add rule name="Remote Admin Support" dir=in action=allow protocol=TCP localport=5555 profile=any enable=yes >nul 2>&1' | Out-Null
+                }
+            }
+        }
         Check = { param($a) Test-Answer $a @('5555', 'tcp 5555', '5555/tcp') }
-        Hints = @('Scroll right to the Local Port column', 'The rule is named Remote Admin Support', 'answer 5555')
+        Hints = @('Click the Name column header to sort A-Z (press F5 if wf.msc was already open), then scroll to R', 'The rule is named Remote Admin Support; scroll right to the Local Port column', 'answer 5555')
     },
     @{
         Title = 'Windows Firewall - remove it'
@@ -227,7 +238,7 @@ $Levels = @(
             $r = Get-NetFirewallRule -DisplayName 'Remote Admin Support' -EA SilentlyContinue
             if ($r -and @($r | Where-Object { $_.Enabled -eq 'True' }).Count -gt 0) { 'Remote Admin Support is still enabled' }
         }
-        Hints = @('Right-click the rule in Inbound Rules', 'Disable Rule or Delete both work', 'Right-click Remote Admin Support > Disable Rule')
+        Hints = @('Right-click the rule in Inbound Rules (sort by Name, press F5 to refresh)', 'Disable Rule or Delete both work', 'Right-click Remote Admin Support > Disable Rule')
     },
     @{
         Title = 'Windows Security - antivirus'
@@ -281,6 +292,7 @@ function Show-Help {
 function Show-Task {
     if ($script:Level -gt $Levels.Count) { return }
     $L = $Levels[$script:Level - 1]
+    if ($L.Prep) { try { & $L.Prep } catch { } }
     Show-Line
     Write-Host ("STEP {0}/{1} - {2}" -f $script:Level, $Levels.Count, $L.Title) -ForegroundColor White
     $firstOpen = $true
