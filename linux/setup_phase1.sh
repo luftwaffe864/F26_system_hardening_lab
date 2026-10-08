@@ -289,7 +289,7 @@ packages() {
   apt-get update -qq >/dev/null 2>&1 || true
   # Full vim + nano: vim-tiny runs in vi-compatible mode where arrow keys type A/B/C/D
   apt-get install -y -qq curl python3 ufw cron procps psmisc iproute2 \
-    openssh-server libpam-pwquality nano vim x11-xkb-utils >/dev/null 2>&1 || true
+    openssh-server libpam-pwquality nano vim x11-xkb-utils libcap2-bin e2fsprogs >/dev/null 2>&1 || true
   install -d -m 755 /etc/vim
   cat > /etc/vim/vimrc.local <<'EOF'
 " DCIG lab: arrow keys, backspace, and line numbers behave as expected
@@ -346,8 +346,37 @@ EOF
     echo '[ -n "$DISPLAY" ] && [ -x /usr/local/bin/dcig-fix-keys ] && /usr/local/bin/dcig-fix-keys' >> /etc/bash.bashrc
 }
 
+# Phase 2 plants must not still be on the box when the quest starts.
+clear_phase2() {
+  systemctl disable --now hardening-score-agent.timer >/dev/null 2>&1 || true
+  systemctl disable --now log-rotate-helper.timer log-rotate-helper.service net-helper >/dev/null 2>&1 || true
+  rm -f /etc/systemd/system/log-rotate-helper.timer /etc/systemd/system/log-rotate-helper.service \
+        /etc/systemd/system/net-helper.service
+  systemctl daemon-reload >/dev/null 2>&1 || true
+  pkill -f 'listen5555.py|listen31337.py|nethelper.sh' >/dev/null 2>&1 || true
+  for u in oldintern gamesuser sysmaint helpdesk auditor polkitd-helper; do
+    userdel -r "$u" >/dev/null 2>&1 || true
+  done
+  rm -f /usr/local/bin/snap-repair /usr/local/bin/backup-tool /usr/local/libexec/health-check \
+        /etc/cron.d/system-update-check /var/tmp/.update_check.sh /var/tmp/backup-passwords.txt \
+        /etc/sudoers.d/99-helpdesk-temp /etc/sudoers.d/010-staff \
+        /etc/ssh/sshd_config.d/99-lab-insecure.conf /etc/rc.local
+  rm -rf /opt/CodecPack /opt/vault2 /home/student/Documents/wifi-notes.txt
+  chattr -i /etc/cron.hourly/.sync-cache 2>/dev/null || true
+  rm -f /etc/cron.hourly/.sync-cache
+  if [[ -f /root/.ssh/authorized_keys ]] && grep -q lab-backdoor /root/.ssh/authorized_keys 2>/dev/null; then
+    rm -f /root/.ssh/authorized_keys
+  fi
+  if crontab -l 2>/dev/null | grep -q hl-beacon; then
+    crontab -l 2>/dev/null | grep -v hl-beacon | crontab - || true
+  fi
+  rm -rf /var/lib/hardening-lab/planted
+  rm -f /var/lib/hardening-lab/got_* /home/student/PHASE2.txt 2>/dev/null || true
+}
+
 main() {
   log "Phase 1 setup on $(hostname -s) team=$(team_from_host)"
+  clear_phase2
   packages
   install_dirs
   install_student

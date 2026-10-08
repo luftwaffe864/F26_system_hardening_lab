@@ -35,82 +35,76 @@ post() {
   fi
 }
 
-# --- EASY ---
-# L2-02 remove oldintern (10)
-if ! id oldintern >/dev/null 2>&1; then post L2-02 10; fi
-# L2-09 remove gamesuser (10)
-if ! id gamesuser >/dev/null 2>&1; then post L2-09 10; fi
-# L2-06 remove snap-repair (10)
-if [[ ! -e /usr/local/bin/snap-repair ]]; then post L2-06 10; fi
-# L2-10 remove CodecPack (10)
-if [[ ! -e /opt/CodecPack ]]; then post L2-10 10; fi
-# L2-11 remove wifi-notes.txt (10)
+# Points only after prepare confirmed the plant (no free points when a plant failed).
+PLANT=/var/lib/hardening-lab/planted
+ok() { [[ -f "$PLANT/$1" ]]; }
 STUDENT_HOME=$(getent passwd student 2>/dev/null | cut -d: -f6)
 STUDENT_HOME=${STUDENT_HOME:-/home/student}
-if [[ ! -e "$STUDENT_HOME/Documents/wifi-notes.txt" ]]; then post L2-11 10; fi
 
-# --- MEDIUM ---
-# L2-01 sysmaint not in sudo / deleted (15)
-if ! id sysmaint >/dev/null 2>&1 || ! id -nG sysmaint 2>/dev/null | tr ' ' '\n' | grep -qx sudo; then
-  post L2-01 15
-fi
-# L2-07 creds.txt gone or 600 (10)
-if [[ ! -e /home/sysmaint/creds.txt ]]; then
-  post L2-07 10
-elif [[ "$(stat -c %a /home/sysmaint/creds.txt 2>/dev/null)" == "600" ]]; then
-  post L2-07 10
-fi
-# L2-03 cron.d + script gone (15)
-if [[ ! -e /etc/cron.d/system-update-check ]] && [[ ! -e /var/tmp/.update_check.sh ]]; then
-  post L2-03 15
-fi
-# L2-05 no listener on 5555 (15)
-if ! ss -tln 2>/dev/null | grep -q ':5555'; then post L2-05 15; fi
-# L2-08 ufw active (15)
-if command -v ufw >/dev/null && ufw status 2>/dev/null | head -1 | grep -qi active; then
-  post L2-08 15
-fi
-# L2-12 bad sudoers drop-in removed (20)
-if [[ ! -e /etc/sudoers.d/99-helpdesk-temp ]]; then post L2-12 20; fi
-# L2-13 PermitRootLogin not yes (15)
-root_ok=1
-if [[ -f /etc/ssh/sshd_config.d/99-lab-insecure.conf ]]; then root_ok=0; fi
-if grep -RiqE '^\s*PermitRootLogin\s+yes' /etc/ssh/sshd_config /etc/ssh/sshd_config.d 2>/dev/null; then
-  root_ok=0
-fi
-if [[ "$root_ok" -eq 1 ]]; then post L2-13 15; fi
+# --- EASY (5) ---
+ok LE-01 && ! id oldintern >/dev/null 2>&1 && post LE-01 5
+ok LE-02 && ! id gamesuser >/dev/null 2>&1 && post LE-02 5
+ok LE-03 && [[ ! -e /usr/local/bin/snap-repair ]] && post LE-03 5
+ok LE-04 && [[ ! -e /opt/CodecPack ]] && post LE-04 5
+ok LE-05 && [[ ! -e "$STUDENT_HOME/Documents/wifi-notes.txt" ]] && post LE-05 5
+ok LE-06 && [[ ! -e /var/tmp/backup-passwords.txt ]] && post LE-06 5
+ok LE-07 && ! ss -tln 2>/dev/null | grep -q ':5555' && post LE-07 5
+ok LE-08 && command -v ufw >/dev/null && ufw status 2>/dev/null | head -1 | grep -qi active && post LE-08 5
 
-# --- HARD ---
-# L2-04 net-helper stopped+disabled (20)
-if ! systemctl is-active net-helper >/dev/null 2>&1 && ! systemctl is-enabled net-helper >/dev/null 2>&1; then
-  post L2-04 20
+# --- MEDIUM (10) ---
+if ok LM-01 && { ! id sysmaint >/dev/null 2>&1 || ! id -nG sysmaint 2>/dev/null | tr ' ' '\n' | grep -qx sudo; }; then
+  post LM-01 10
 fi
-# L2-14 root crontab beacon line gone (15)
-if ! crontab -l 2>/dev/null | grep -q 'hl-beacon'; then post L2-14 15; fi
-# L2-15 rc.local cleaned (15)
-if [[ ! -e /etc/rc.local ]] || ! grep -q 'hl-cache/beacon\|lab persistence' /etc/rc.local 2>/dev/null; then
-  post L2-15 15
+ok LM-02 && [[ ! -e /etc/cron.d/system-update-check ]] && [[ ! -e /var/tmp/.update_check.sh ]] && post LM-02 10
+ok LM-03 && [[ ! -e /etc/sudoers.d/99-helpdesk-temp ]] && post LM-03 10
+if ok LM-04; then
+  t="$(/usr/sbin/sshd -T 2>/dev/null || true)"
+  grep -qx 'permitrootlogin yes' <<<"$t" || post LM-04 10
 fi
-# L2-16 root authorized_keys backdoor gone (20)
-if [[ ! -e /root/.ssh/authorized_keys ]] || ! grep -q 'lab-backdoor' /root/.ssh/authorized_keys 2>/dev/null; then
-  post L2-16 20
+if ok LM-05; then
+  if [[ ! -e /home/sysmaint/creds.txt ]]; then post LM-05 10
+  elif [[ "$(stat -c %a /home/sysmaint/creds.txt 2>/dev/null)" == "600" ]]; then post LM-05 10
+  fi
 fi
-# L2-17 backup-tool not setuid / removed (20)
-if [[ ! -e /usr/local/bin/backup-tool ]]; then
-  post L2-17 20
-elif ! [[ -u /usr/local/bin/backup-tool ]]; then
-  post L2-17 20
+if ok LM-06 && ! systemctl is-active net-helper >/dev/null 2>&1 && ! systemctl is-enabled net-helper >/dev/null 2>&1; then
+  post LM-06 10
 fi
-# L2-18 no listener on 31337 (20)
-if ! ss -tln 2>/dev/null | grep -q ':31337'; then post L2-18 20; fi
-# L2-19 vault2 secrets fixed (15)
-if [[ ! -e /opt/vault2/db.conf ]]; then
-  post L2-19 15
-elif [[ "$(stat -c %a /opt/vault2 2>/dev/null)" != "777" ]] && [[ "$(stat -c %a /opt/vault2/db.conf 2>/dev/null)" != "666" ]]; then
-  # directory not world-writable AND file not world-writable
-  post L2-19 15
-elif [[ "$(stat -c %a /opt/vault2/db.conf 2>/dev/null)" == "600" ]] || [[ "$(stat -c %a /opt/vault2/db.conf 2>/dev/null)" == "640" ]]; then
-  post L2-19 15
+if ok LM-07; then
+  if [[ ! -e /opt/vault2/db.conf ]]; then post LM-07 10
+  elif [[ "$(stat -c %a /opt/vault2 2>/dev/null)" != "777" && "$(stat -c %a /opt/vault2/db.conf 2>/dev/null)" != "666" ]]; then
+    post LM-07 10
+  fi
+fi
+
+# --- HARD (15) ---
+ok LH-01 && ! crontab -l 2>/dev/null | grep -q 'hl-beacon' && post LH-01 15
+ok LH-02 && { [[ ! -e /etc/rc.local ]] || ! grep -q 'hl-cache/beacon\|lab persistence' /etc/rc.local 2>/dev/null; } && post LH-02 15
+ok LH-03 && { [[ ! -e /root/.ssh/authorized_keys ]] || ! grep -q 'lab-backdoor' /root/.ssh/authorized_keys 2>/dev/null; } && post LH-03 15
+if ok LH-04; then
+  if [[ ! -e /usr/local/bin/backup-tool ]]; then post LH-04 15
+  elif [[ ! -u /usr/local/bin/backup-tool ]]; then post LH-04 15
+  fi
+fi
+ok LH-05 && ! ss -tln 2>/dev/null | grep -q ':31337' && post LH-05 15
+
+# --- VERY HARD (20) ---
+if ok LV-01; then
+  if [[ ! -e /usr/local/libexec/health-check ]]; then post LV-01 20
+  elif ! getcap /usr/local/libexec/health-check 2>/dev/null | grep -q 'cap_setuid'; then post LV-01 20
+  fi
+fi
+if ok LV-02 && ! systemctl is-enabled log-rotate-helper.timer >/dev/null 2>&1; then
+  post LV-02 20
+fi
+ok LV-03 && [[ ! -e /etc/sudoers.d/010-staff ]] && post LV-03 20
+
+# --- ALMOST IMPOSSIBLE (25) ---
+ok LI-01 && [[ ! -e /etc/cron.hourly/.sync-cache ]] && post LI-01 25
+if ok LI-02; then
+  shell="$(getent passwd polkitd-helper 2>/dev/null | cut -d: -f7)"
+  if [[ -z "$shell" || "$shell" != */bin/bash && "$shell" != */bin/sh ]]; then
+    post LI-02 25
+  fi
 fi
 
 exit 0

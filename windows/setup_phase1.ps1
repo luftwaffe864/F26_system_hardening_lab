@@ -152,10 +152,31 @@ function Remove-Phase2Plants {
         cmd /c "sc.exe stop $svc >nul 2>&1"
         cmd /c "sc.exe delete $svc >nul 2>&1"
     }
-    Remove-Item 'C:\Program Files\Vendor Update', 'C:\ProgramData\PrintNotifyHelper' -Recurse -Force -EA SilentlyContinue
+    Remove-Item 'C:\Program Files\Vendor Update', 'C:\ProgramData\PrintNotifyHelper',
+        'C:\Program Files\CouponPrinter', 'C:\ProgramData\Microsoft\Cache' -Recurse -Force -EA SilentlyContinue
+    Remove-Item (Join-Path $env:ProgramData 'Microsoft\Windows\Start Menu\Programs\Startup\CouponHelper.bat') -Force -EA SilentlyContinue
+    Remove-Item (Join-Path $env:PUBLIC 'Documents\passwords.txt'), 'C:\ProgramData\updater.exe' -Force -EA SilentlyContinue
+    $hosts = Join-Path $env:SystemRoot 'System32\drivers\etc\hosts'
+    if ((Test-Path $hosts) -and (Select-String -Path $hosts -Pattern 'dcig-lab-plant' -Quiet -EA SilentlyContinue)) {
+        $kept = @(Get-Content $hosts | Where-Object { $_ -notmatch 'dcig-lab-plant' })
+        Set-Content -Path $hosts -Value $kept -Encoding ASCII
+    }
+    Remove-NetFirewallRule -DisplayName 'Allow Remote Debug' -EA SilentlyContinue
+    foreach ($tn in @('\Microsoft\Windows\Maintenance\CacheCleanup', 'CacheCleanup')) {
+        cmd /c "schtasks /Delete /TN `"$tn`" /F >nul 2>&1" | Out-Null
+    }
+    Set-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon' `
+        -Name 'Userinit' -Value 'C:\Windows\system32\userinit.exe,' -EA SilentlyContinue
+    Set-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Services\LanmanServer\Parameters' `
+        -Name 'RestrictNullSessAccess' -Value 1 -EA SilentlyContinue
+    Set-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Lsa' -Name 'RestrictAnonymous' -Value 1 -EA SilentlyContinue
+    Remove-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options\magnify.exe' `
+        -Name 'Debugger' -EA SilentlyContinue
+    $gp = Join-Path $env:SystemRoot 'System32\GroupPolicy\Machine\Scripts'
+    Remove-Item (Join-Path $gp 'Startup\lab-sync.bat'), (Join-Path $gp 'scripts.ini') -Force -EA SilentlyContinue
     Remove-Item (Join-Path $LabRoot 'PHASE2.txt'), (Join-Path $env:PUBLIC 'Desktop\PHASE2.txt'),
         (Join-Path $LabRoot 'phase2-status.txt') -Force -EA SilentlyContinue
-    Remove-Item (Join-Path $LabRoot 'score_state') -Recurse -Force -EA SilentlyContinue
+    Remove-Item (Join-Path $LabRoot 'score_state'), (Join-Path $Cfg 'planted') -Recurse -Force -EA SilentlyContinue
 }
 
 Assert-Admin

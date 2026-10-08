@@ -56,115 +56,142 @@ function Get-AdminNames {
     }
 }
 
-# --- EASY ---
-# W2-02 Guest disabled or removed
-$guest = Get-LocalUser -Name 'Guest' -EA SilentlyContinue
-if ($guest -and -not $guest.Enabled) { Post-Finding 'W2-02' 10 }
-elseif (-not $guest) { Post-Finding 'W2-02' 10 }
-
-# W2-09 tempvendor removed
-if (-not (Get-LocalUser -Name 'tempvendor' -EA SilentlyContinue)) { Post-Finding 'W2-09' 10 }
-
-# W2-07 Sticky Keys IFEO debugger cleared
-$ifeo = Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options\sethc.exe' -EA SilentlyContinue
-if (-not $ifeo -or [string]::IsNullOrEmpty([string]$ifeo.Debugger)) { Post-Finding 'W2-07' 10 }
-
-# W2-10 TeamDrop share gone or Everyone FullAccess removed
-$share = Get-SmbShare -Name 'TeamDrop' -EA SilentlyContinue
-if (-not $share) { Post-Finding 'W2-10' 10 }
-else {
-    $access = Get-SmbShareAccess -Name 'TeamDrop' -EA SilentlyContinue
-    $everyoneFull = $access | Where-Object {
-        $_.AccountName -match 'Everyone' -and $_.AccessRight -eq 'Full' -and $_.AccessControlType -eq 'Allow'
+# Points only after prepare confirmed the plant (no free points when a plant failed).
+function Test-Planted([string]$Id) {
+    Test-Path (Join-Path $LabRoot "config\planted\$Id")
+}
+function Get-StudentAie {
+    try {
+        $sid = (New-Object System.Security.Principal.NTAccount('student')).Translate(
+            [System.Security.Principal.SecurityIdentifier]).Value
+    } catch { return $null }
+    $loaded = $false
+    if (-not (Test-Path "Registry::HKEY_USERS\$sid")) {
+        $hive = 'C:\Users\student\NTUSER.DAT'
+        if (-not (Test-Path $hive)) { return $null }
+        & reg.exe load "HKU\$sid" $hive | Out-Null
+        $loaded = $true
     }
-    if (-not $everyoneFull) { Post-Finding 'W2-10' 10 }
+    $v = (Get-ItemProperty "Registry::HKEY_USERS\$sid\SOFTWARE\Policies\Microsoft\Windows\Installer" -EA SilentlyContinue).AlwaysInstallElevated
+    if ($loaded) { & reg.exe unload "HKU\$sid" | Out-Null }
+    return $v
 }
 
-# W2-11 UAC re-enabled (EnableLUA = 1)
-$lua = (Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System' -EA SilentlyContinue).EnableLUA
-if ($lua -eq 1) { Post-Finding 'W2-11' 10 }
-
-# --- MEDIUM ---
-# W2-01 contractor not admin / deleted
-$con = Get-LocalUser -Name 'contractor' -EA SilentlyContinue
-if (-not $con) { Post-Finding 'W2-01' 15 }
-elseif ((Get-AdminNames) -notcontains 'contractor') { Post-Finding 'W2-01' 15 }
-
-# W2-03 RDP NLA required (UserAuthentication = 1)
-$nla = (Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -EA SilentlyContinue).UserAuthentication
-if ($nla -eq 1) { Post-Finding 'W2-03' 15 }
-
-# W2-05 SNMP firewall hole closed
-if (Test-FwGoneOrOff 'Temp SNMP Access') { Post-Finding 'W2-05' 15 }
-
-# W2-06 Defender real-time on
-# A failed query must not count as "on"
-try {
-    $p = Get-MpPreference -EA Stop
-    $s = Get-MpComputerStatus -EA SilentlyContinue
-    if ($p -and $p.DisableRealtimeMonitoring -eq $false -and (-not $s -or $s.RealTimeProtectionEnabled)) {
-        Post-Finding 'W2-06' 15
+# --- EASY (5) ---
+if (Test-Planted 'WE-01') {
+    $guest = Get-LocalUser -Name 'Guest' -EA SilentlyContinue
+    if ((-not $guest) -or (-not $guest.Enabled)) { Post-Finding 'WE-01' 5 }
+}
+if ((Test-Planted 'WE-02') -and -not (Get-LocalUser -Name 'tempvendor' -EA SilentlyContinue)) { Post-Finding 'WE-02' 5 }
+$startup = Join-Path $env:ProgramData 'Microsoft\Windows\Start Menu\Programs\Startup\CouponHelper.bat'
+if ((Test-Planted 'WE-03') -and -not (Test-Path $startup)) { Post-Finding 'WE-03' 5 }
+if (Test-Planted 'WE-04') {
+    $share = Get-SmbShare -Name 'TeamDrop' -EA SilentlyContinue
+    if (-not $share) { Post-Finding 'WE-04' 5 }
+    else {
+        $access = Get-SmbShareAccess -Name 'TeamDrop' -EA SilentlyContinue
+        $everyoneFull = $access | Where-Object {
+            $_.AccountName -match 'Everyone' -and $_.AccessRight -eq 'Full' -and $_.AccessControlType -eq 'Allow'
+        }
+        if (-not $everyoneFull) { Post-Finding 'WE-04' 5 }
     }
-} catch {}
+}
+if ((Test-Planted 'WE-05') -and -not (Test-Path (Join-Path $env:PUBLIC 'Documents\passwords.txt'))) { Post-Finding 'WE-05' 5 }
+if (Test-Planted 'WE-06') {
+    $hosts = Join-Path $env:SystemRoot 'System32\drivers\etc\hosts'
+    if (-not (Select-String -Path $hosts -Pattern 'dcig-lab-plant' -Quiet -EA SilentlyContinue)) { Post-Finding 'WE-06' 5 }
+}
+if ((Test-Planted 'WE-07') -and (Test-FwGoneOrOff 'Allow Remote Debug')) { Post-Finding 'WE-07' 5 }
+if ((Test-Planted 'WE-08') -and -not (Test-Path 'C:\Program Files\CouponPrinter')) { Post-Finding 'WE-08' 5 }
 
-# W2-08 AlwaysInstallElevated cleared in both hives (missing or 0)
-$hk = (Get-ItemProperty 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\Installer' -EA SilentlyContinue).AlwaysInstallElevated
-$cu = (Get-ItemProperty 'HKCU:\SOFTWARE\Policies\Microsoft\Windows\Installer' -EA SilentlyContinue).AlwaysInstallElevated
-if (($null -eq $hk -or $hk -eq 0) -and ($null -eq $cu -or $cu -eq 0)) { Post-Finding 'W2-08' 15 }
-
-# W2-12 AutoAdminLogon off + DefaultPassword cleared
-$wl = Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon' -EA SilentlyContinue
-if ($null -eq $wl -or (($wl.AutoAdminLogon -ne '1') -and [string]::IsNullOrEmpty([string]$wl.DefaultPassword))) {
-    Post-Finding 'W2-12' 20
+# --- MEDIUM (10) ---
+if (Test-Planted 'WM-01') {
+    $con = Get-LocalUser -Name 'contractor' -EA SilentlyContinue
+    if ((-not $con) -or ((Get-AdminNames) -notcontains 'contractor')) { Post-Finding 'WM-01' 10 }
+}
+if (Test-Planted 'WM-02') {
+    $nla = (Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -EA SilentlyContinue).UserAuthentication
+    if ($nla -eq 1) { Post-Finding 'WM-02' 10 }
+}
+if (Test-Planted 'WM-03') {
+    try {
+        $p = Get-MpPreference -EA Stop
+        $s = Get-MpComputerStatus -EA SilentlyContinue
+        if ($p -and $p.DisableRealtimeMonitoring -eq $false -and (-not $s -or $s.RealTimeProtectionEnabled)) {
+            Post-Finding 'WM-03' 10
+        }
+    } catch {}
+}
+if (Test-Planted 'WM-04') {
+    $hk = (Get-ItemProperty 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\Installer' -EA SilentlyContinue).AlwaysInstallElevated
+    $cu = Get-StudentAie
+    if (($null -eq $hk -or $hk -eq 0) -and ($null -eq $cu -or $cu -eq 0)) { Post-Finding 'WM-04' 10 }
+}
+if (Test-Planted 'WM-05') {
+    $wl = Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon' -EA SilentlyContinue
+    if ($wl -and ($wl.AutoAdminLogon -ne '1') -and [string]::IsNullOrEmpty([string]$wl.DefaultPassword)) {
+        Post-Finding 'WM-05' 10
+    }
+}
+if (Test-Planted 'WM-06') {
+    $rr = Get-Service -Name 'RemoteRegistry' -EA SilentlyContinue
+    if ((-not $rr) -or $rr.StartType -ne 'Automatic') { Post-Finding 'WM-06' 10 }
+}
+if (Test-Planted 'WM-07') {
+    $pay = 'C:\Shares\HR\payroll.csv'
+    if (-not (Test-Path $pay)) { Post-Finding 'WM-07' 10 }
+    else {
+        $acl = Get-Acl $pay
+        if (-not ($acl.Access | Where-Object { $_.IdentityReference -match 'Everyone' -and $_.FileSystemRights -match 'FullControl' })) {
+            Post-Finding 'WM-07' 10
+        }
+    }
 }
 
-# W2-13 WDigest cleartext caching off
-$wd = (Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\SecurityProviders\WDigest' -EA SilentlyContinue).UseLogonCredential
-if ($null -eq $wd -or $wd -eq 0) { Post-Finding 'W2-13' 15 }
-
-# W2-14 Remote Registry not set to Automatic (Manual/Disabled is fine)
-$rr = Get-Service -Name 'RemoteRegistry' -EA SilentlyContinue
-if (-not $rr -or $rr.StartType -ne 'Automatic') { Post-Finding 'W2-14' 15 }
-
-# --- HARD ---
-# W2-04 RestrictAnonymous hardened (>= 1)
-$ra = (Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\Lsa' -EA SilentlyContinue).RestrictAnonymous
-if ($null -ne $ra -and [int]$ra -ge 1) { Post-Finding 'W2-04' 20 }
-
-# W2-15 LM compatibility not weak (>= 3)
-$lm = (Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\Lsa' -EA SilentlyContinue).LmCompatibilityLevel
-if ($null -ne $lm -and [int]$lm -ge 3) { Post-Finding 'W2-15' 15 }
-
-# W2-16 WinRM does not allow unencrypted
-$allowUnenc = $null
-try { $allowUnenc = (Get-Item -Path WSMan:\localhost\Service\AllowUnencrypted -EA SilentlyContinue).Value } catch {}
-if ($null -eq $allowUnenc) {
-    # If WinRM path unavailable, treat as fixed only when we cannot read true (avoid free points)
-    # Fall through - no auto-award
-} elseif (-not $allowUnenc -or $allowUnenc -eq $false -or "$allowUnenc" -eq 'false') {
-    Post-Finding 'W2-16' 15
+# --- HARD (15) ---
+if (Test-Planted 'WH-01') {
+    $wd = (Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\SecurityProviders\WDigest' -EA SilentlyContinue).UseLogonCredential
+    if ($null -eq $wd -or $wd -eq 0) { Post-Finding 'WH-01' 15 }
+}
+if (Test-Planted 'WH-02') {
+    $ra = (Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\Lsa' -EA SilentlyContinue).RestrictAnonymous
+    if ($null -ne $ra -and [int]$ra -ge 1) { Post-Finding 'WH-02' 15 }
+}
+if (Test-Planted 'WH-03') {
+    $lm = (Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\Lsa' -EA SilentlyContinue).LmCompatibilityLevel
+    if ($null -ne $lm -and [int]$lm -ge 3) { Post-Finding 'WH-03' 15 }
+}
+if (Test-Planted 'WH-04') {
+    $vs = Get-CimInstance Win32_Service -Filter "Name='VendorUpd'" -EA SilentlyContinue
+    if (-not $vs) { Post-Finding 'WH-04' 15 }
+    elseif ([string]$vs.PathName -match '^".+"') { Post-Finding 'WH-04' 15 }
+}
+if (Test-Planted 'WH-05') {
+    $svc = Get-Service -Name 'HLPrintHelp' -EA SilentlyContinue
+    if ((-not $svc) -or $svc.StartType -eq 'Disabled') { Post-Finding 'WH-05' 15 }
 }
 
-# W2-17 unquoted VendorUpd service removed OR ImagePath properly quoted without exploit pattern
-$vs = Get-CimInstance Win32_Service -Filter "Name='VendorUpd'" -EA SilentlyContinue
-if (-not $vs) { Post-Finding 'W2-17' 20 }
-else {
-    $img = [string]$vs.PathName
-    # Fixed if path is quoted starting at C:\Program Files
-    if ($img -match '^".+"') { Post-Finding 'W2-17' 20 }
+# --- VERY HARD (20) ---
+if ((Test-Planted 'WV-01') -and -not (Get-ScheduledTask -TaskName 'CacheCleanup' -EA SilentlyContinue)) {
+    Post-Finding 'WV-01' 20
+}
+if (Test-Planted 'WV-02') {
+    $ui = [string](Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon' -EA SilentlyContinue).Userinit
+    if ($ui -and $ui -notmatch 'updater\.exe') { Post-Finding 'WV-02' 20 }
+}
+if (Test-Planted 'WV-03') {
+    $ns = (Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Services\LanmanServer\Parameters' -EA SilentlyContinue).RestrictNullSessAccess
+    if ($null -ne $ns -and [int]$ns -ge 1) { Post-Finding 'WV-03' 20 }
 }
 
-# W2-18 HLPrintHelp stopped+disabled or deleted
-$svc = Get-Service -Name 'HLPrintHelp' -EA SilentlyContinue
-if (-not $svc) { Post-Finding 'W2-18' 25 }
-elseif ($svc.StartType -eq 'Disabled') { Post-Finding 'W2-18' 25 }
-
-# W2-19 payroll.csv gone or Everyone Full removed
-$pay = 'C:\Shares\HR\payroll.csv'
-if (-not (Test-Path $pay)) { Post-Finding 'W2-19' 15 }
-else {
-    $acl = Get-Acl $pay
-    if (-not ($acl.Access | Where-Object { $_.IdentityReference -match 'Everyone' -and $_.FileSystemRights -match 'FullControl' })) {
-        Post-Finding 'W2-19' 15
+# --- ALMOST IMPOSSIBLE (25) ---
+if (Test-Planted 'WI-01') {
+    $mag = Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options\magnify.exe' -EA SilentlyContinue
+    if ((-not $mag) -or [string]::IsNullOrEmpty([string]$mag.Debugger)) { Post-Finding 'WI-01' 25 }
+}
+if (Test-Planted 'WI-02') {
+    $ini = Join-Path $env:SystemRoot 'System32\GroupPolicy\Machine\Scripts\scripts.ini'
+    if (-not (Test-Path $ini) -or -not (Select-String -Path $ini -Pattern 'lab-sync' -Quiet -EA SilentlyContinue)) {
+        Post-Finding 'WI-02' 25
     }
 }

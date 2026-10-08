@@ -49,4 +49,12 @@ try {
     Start-Service -Name 'TermService' -EA SilentlyContinue | Out-Null
 } catch {}
 
+# Repair logon only if userinit.exe itself was removed. Leave an extra comma-program
+# in place: that is a scored Phase-2 finding, not a lockout.
+$wl = 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon'
+$ui = [string](Get-ItemProperty $wl -EA SilentlyContinue).Userinit
+if ($ui -and $ui -notmatch '(?i)userinit\.exe') {
+    Set-ItemProperty -Path $wl -Name 'Userinit' -Value 'C:\Windows\system32\userinit.exe,' | Out-Null
+}
+
 exit 0

@@ -57,6 +57,25 @@ function Plant([string]$Id, [string]$Desc, [scriptblock]$Do, [scriptblock]$Verif
     [void]$script:Results.Add($line)
     Add-Content $StatusFile $line -Encoding ASCII
     if ($ok) { Say $line } else { Write-Host "[phase2-win] $line" -ForegroundColor Yellow }
+    if ($ok -and $Id -ne 'AGENT') {
+        $pdir = Join-Path $LabRoot 'config\planted'
+        New-Item -ItemType Directory -Force -Path $pdir | Out-Null
+        New-Item -ItemType File -Force -Path (Join-Path $pdir $Id) | Out-Null
+    }
+}
+
+function Invoke-StudentHive([scriptblock]$Do) {
+    $sid = (New-Object System.Security.Principal.NTAccount('student')).Translate(
+        [System.Security.Principal.SecurityIdentifier]).Value
+    $loaded = $false
+    if (-not (Test-Path "Registry::HKEY_USERS\$sid")) {
+        $hive = 'C:\Users\student\NTUSER.DAT'
+        if (-not (Test-Path $hive)) { return $null }
+        & reg.exe load "HKU\$sid" $hive | Out-Null
+        $loaded = $true
+    }
+    try { return & $Do $sid }
+    finally { if ($loaded) { & reg.exe unload "HKU\$sid" | Out-Null } }
 }
 
 function Set-LabUser([string]$Name, [string]$Pass, [string]$Full, [string]$Desc) {
@@ -107,123 +126,143 @@ foreach ($f in @('hr_memo.txt', 'briefing.txt', 'authorized_users.txt')) {
 }
 Remove-Item (Join-Path $LabRoot 'hr_memo.txt') -Force -EA SilentlyContinue
 Remove-Item (Join-Path $LabRoot 'score_state') -Recurse -Force -EA SilentlyContinue
+Remove-Item (Join-Path $Cfg 'planted') -Recurse -Force -EA SilentlyContinue
+# UAC-off needs a reboot and is no longer scored; put it back
+Set-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System' -Name 'EnableLUA' -Value 1 -EA SilentlyContinue
+try { Set-Item -Path WSMan:\localhost\Service\AllowUnencrypted -Value $false -Force -EA SilentlyContinue } catch {}
 
-# ========== EASY ==========
-Plant 'W2-02' 'Guest account enabled' {
+# ========== EASY (5) ==========
+Plant 'WE-01' 'Guest account enabled' {
     Enable-LocalUser -Name 'Guest'
 } { (Get-LocalUser -Name 'Guest').Enabled }
 
-Plant 'W2-09' 'leftover account tempvendor' {
+Plant 'WE-02' 'leftover account tempvendor' {
     Set-LabUser 'tempvendor' 'TempVendor1!' 'Temp Vendor Access' 'Remove after install'
 } { [bool](Get-LocalUser -Name 'tempvendor' -EA SilentlyContinue) }
 
-Plant 'W2-07' 'Sticky Keys IFEO debugger' {
-    $ifeo = 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options\sethc.exe'
-    New-Item -Path $ifeo -Force | Out-Null
-    New-ItemProperty -Path $ifeo -Name 'Debugger' -Value 'C:\Windows\System32\cmd.exe' -PropertyType String -Force | Out-Null
-} { (Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options\sethc.exe').Debugger }
+Plant 'WE-03' 'all-users Startup script' {
+    $dir = Join-Path $env:ProgramData 'Microsoft\Windows\Start Menu\Programs\Startup'
+    New-Item -ItemType Directory -Force -Path $dir | Out-Null
+    Set-Content (Join-Path $dir 'CouponHelper.bat') -Value "@echo off`r`n" -Encoding ASCII
+} { Test-Path (Join-Path $env:ProgramData 'Microsoft\Windows\Start Menu\Programs\Startup\CouponHelper.bat') }
 
-Plant 'W2-10' 'TeamDrop share, Everyone Full' {
+Plant 'WE-04' 'TeamDrop share, Everyone Full' {
     New-Item -ItemType Directory -Force -Path (Join-Path $ShareRoot 'TeamDrop') | Out-Null
     Set-Content (Join-Path $ShareRoot 'TeamDrop\readme.txt') -Value 'Lab drop share - lock this down' -Encoding ASCII
     if (Get-SmbShare -Name 'TeamDrop' -EA SilentlyContinue) { Remove-SmbShare -Name 'TeamDrop' -Force }
     New-SmbShare -Name 'TeamDrop' -Path (Join-Path $ShareRoot 'TeamDrop') -FullAccess 'Everyone' | Out-Null
 } { [bool](Get-SmbShare -Name 'TeamDrop' -EA SilentlyContinue) }
 
-Plant 'W2-11' 'UAC disabled (EnableLUA=0)' {
-    New-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System' `
-        -Name 'EnableLUA' -Value 0 -PropertyType DWord -Force | Out-Null
-} { (Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System').EnableLUA -eq 0 }
+Plant 'WE-05' 'plaintext passwords in Public Documents' {
+    $doc = Join-Path $env:PUBLIC 'Documents'
+    New-Item -ItemType Directory -Force -Path $doc | Out-Null
+    Set-Content (Join-Path $doc 'passwords.txt') -Value "wifi Winter2024!`r`nvpn TeamVPN`r`n" -Encoding ASCII
+} { Test-Path (Join-Path $env:PUBLIC 'Documents\passwords.txt') }
 
-# ========== MEDIUM ==========
-Plant 'W2-01' 'contractor in Administrators' {
+Plant 'WE-06' 'hosts file extra line' {
+    $hosts = Join-Path $env:SystemRoot 'System32\drivers\etc\hosts'
+    if (-not (Select-String -Path $hosts -Pattern 'dcig-lab-plant' -Quiet -EA SilentlyContinue)) {
+        Add-Content -Path $hosts -Value '10.255.255.254 intranet.dcig.lab # dcig-lab-plant' -Encoding ASCII
+    }
+} { [bool](Select-String -Path (Join-Path $env:SystemRoot 'System32\drivers\etc\hosts') -Pattern 'dcig-lab-plant' -Quiet -EA SilentlyContinue) }
+
+Plant 'WE-07' 'firewall rule Allow Remote Debug (TCP 9000)' {
+    Remove-NetFirewallRule -DisplayName 'Temp SNMP Access' -EA SilentlyContinue
+    Remove-NetFirewallRule -DisplayName 'Allow Remote Debug' -EA SilentlyContinue
+    New-NetFirewallRule -DisplayName 'Allow Remote Debug' -Direction Inbound -Action Allow `
+        -Protocol TCP -LocalPort 9000 -Profile Any -Enabled True | Out-Null
+} { [bool](Get-NetFirewallRule -DisplayName 'Allow Remote Debug' -EA SilentlyContinue) }
+
+Plant 'WE-08' 'CouponPrinter folder' {
+    $dir = 'C:\Program Files\CouponPrinter'
+    New-Item -ItemType Directory -Force -Path $dir | Out-Null
+    Set-Content (Join-Path $dir 'readme.txt') -Value 'Delete this program.' -Encoding ASCII
+} { Test-Path 'C:\Program Files\CouponPrinter' }
+
+# ========== MEDIUM (10) ==========
+Plant 'WM-01' 'contractor in Administrators' {
     Set-LabUser 'contractor' 'Contract2026!' 'Outside Contractor' ''
     cmd /c 'net localgroup Administrators contractor /add >nul 2>&1' | Out-Null
 } { [bool]((cmd /c 'net localgroup Administrators') -match '(^|\\)contractor\s*$') }
 
-Plant 'W2-03' 'RDP without Network Level Authentication' {
+Plant 'WM-02' 'RDP without Network Level Authentication' {
     $rdp = 'HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp'
     New-ItemProperty -Path $rdp -Name 'UserAuthentication' -Value 0 -PropertyType DWord -Force | Out-Null
     Set-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server' -Name 'fDenyTSConnections' -Value 0
 } { (Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp').UserAuthentication -eq 0 }
 
-Plant 'W2-05' 'firewall rule Temp SNMP Access (UDP 161)' {
-    Remove-NetFirewallRule -DisplayName 'Temp SNMP Access' -EA SilentlyContinue
-    New-NetFirewallRule -DisplayName 'Temp SNMP Access' -Direction Inbound -Action Allow `
-        -Protocol UDP -LocalPort 161 -Profile Any -Enabled True | Out-Null
-} { [bool](Get-NetFirewallRule -DisplayName 'Temp SNMP Access' -EA SilentlyContinue) }
-
-Plant 'W2-06' 'Defender real-time protection OFF' {
+Plant 'WM-03' 'Defender real-time protection OFF' {
     Set-MpPreference -DisableRealtimeMonitoring $true
     Start-Sleep -Seconds 3
 } { (Get-MpPreference).DisableRealtimeMonitoring -eq $true }
 
-Plant 'W2-08' 'AlwaysInstallElevated (HKLM + HKCU)' {
-    foreach ($root in @('HKLM:', 'HKCU:')) {
-        $p = "$root\SOFTWARE\Policies\Microsoft\Windows\Installer"
-        New-Item -Path $p -Force | Out-Null
-        New-ItemProperty -Path $p -Name 'AlwaysInstallElevated' -Value 1 -PropertyType DWord -Force | Out-Null
+Plant 'WM-04' 'AlwaysInstallElevated (machine + student)' {
+    $p = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\Installer'
+    New-Item -Path $p -Force | Out-Null
+    New-ItemProperty -Path $p -Name 'AlwaysInstallElevated' -Value 1 -PropertyType DWord -Force | Out-Null
+    Invoke-StudentHive {
+        param($sid)
+        $sp = "Registry::HKEY_USERS\$sid\SOFTWARE\Policies\Microsoft\Windows\Installer"
+        New-Item -Path $sp -Force | Out-Null
+        New-ItemProperty -Path $sp -Name 'AlwaysInstallElevated' -Value 1 -PropertyType DWord -Force | Out-Null
+    } | Out-Null
+} {
+    $hk = (Get-ItemProperty 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\Installer' -EA SilentlyContinue).AlwaysInstallElevated
+    $cu = Invoke-StudentHive {
+        param($sid)
+        (Get-ItemProperty "Registry::HKEY_USERS\$sid\SOFTWARE\Policies\Microsoft\Windows\Installer" -EA SilentlyContinue).AlwaysInstallElevated
     }
-} { (Get-ItemProperty 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\Installer').AlwaysInstallElevated -eq 1 }
+    ($hk -eq 1) -and ($cu -eq 1)
+}
 
-Plant 'W2-12' 'AutoAdminLogon with password in Winlogon' {
+Plant 'WM-05' 'AutoAdminLogon with password in Winlogon' {
     $wl = 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon'
     New-ItemProperty -Path $wl -Name 'AutoAdminLogon' -Value '1' -PropertyType String -Force | Out-Null
     New-ItemProperty -Path $wl -Name 'DefaultUserName' -Value 'contractor' -PropertyType String -Force | Out-Null
     New-ItemProperty -Path $wl -Name 'DefaultPassword' -Value 'Contract2026!' -PropertyType String -Force | Out-Null
 } { (Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon').DefaultPassword }
 
-Plant 'W2-13' 'WDigest cleartext credential caching' {
+Plant 'WM-06' 'Remote Registry set to Automatic' {
+    Set-Service -Name 'RemoteRegistry' -StartupType Automatic
+    Start-Service -Name 'RemoteRegistry' -EA SilentlyContinue
+} { (Get-Service -Name 'RemoteRegistry').StartType -eq 'Automatic' }
+
+Plant 'WM-07' 'payroll.csv with Everyone Full Control' {
+    New-Item -ItemType Directory -Force -Path (Join-Path $ShareRoot 'HR') | Out-Null
+    $pay = Join-Path $ShareRoot 'HR\payroll.csv'
+    Set-Content $pay -Value "name,salary`r`nalice,90000`r`n" -Encoding ASCII
+    cmd /c "icacls `"$pay`" /grant Everyone:F >nul 2>&1" | Out-Null
+} { Test-Path (Join-Path $ShareRoot 'HR\payroll.csv') }
+
+# ========== HARD (15) ==========
+Plant 'WH-01' 'WDigest cleartext credential caching' {
     $wd = 'HKLM:\SYSTEM\CurrentControlSet\Control\SecurityProviders\WDigest'
     New-Item -Path $wd -Force | Out-Null
     New-ItemProperty -Path $wd -Name 'UseLogonCredential' -Value 1 -PropertyType DWord -Force | Out-Null
 } { (Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\SecurityProviders\WDigest').UseLogonCredential -eq 1 }
 
-Plant 'W2-14' 'Remote Registry set to Automatic' {
-    Set-Service -Name 'RemoteRegistry' -StartupType Automatic
-    Start-Service -Name 'RemoteRegistry' -EA SilentlyContinue
-} { (Get-Service -Name 'RemoteRegistry').StartType -eq 'Automatic' }
-
-# ========== HARD ==========
-Plant 'W2-04' 'RestrictAnonymous = 0' {
+Plant 'WH-02' 'RestrictAnonymous = 0' {
     New-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Lsa' `
         -Name 'RestrictAnonymous' -Value 0 -PropertyType DWord -Force | Out-Null
 } { (Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\Lsa').RestrictAnonymous -eq 0 }
 
-Plant 'W2-15' 'weak LmCompatibilityLevel = 1' {
+Plant 'WH-03' 'weak LmCompatibilityLevel = 1' {
     New-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Lsa' `
         -Name 'LmCompatibilityLevel' -Value 1 -PropertyType DWord -Force | Out-Null
 } { (Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\Lsa').LmCompatibilityLevel -eq 1 }
 
-Plant 'W2-16' 'WinRM AllowUnencrypted = true' {
-    Start-Service -Name 'WinRM' -EA SilentlyContinue
-    try {
-        Set-Item -Path WSMan:\localhost\Service\AllowUnencrypted -Value $true -Force
-    } catch {
-        cmd /c "winrm set winrm/config/service @{AllowUnencrypted=`"true`"} >nul 2>&1" | Out-Null
-    }
-} {
-    $v = $null
-    try { $v = (Get-Item WSMan:\localhost\Service\AllowUnencrypted).Value } catch { }
-    if ($null -eq $v) {
-        $v = (Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WSMAN\Service' -EA SilentlyContinue).allow_unencrypted
-    }
-    "$v" -match '^(true|1)$'
-}
-
-Plant 'W2-17' 'unquoted service path VendorUpd' {
+Plant 'WH-04' 'unquoted service path VendorUpd' {
     New-Item -ItemType Directory -Force -Path $UnquotedDir | Out-Null
     Copy-Item "$env:SystemRoot\System32\cmd.exe" (Join-Path $UnquotedDir 'update.exe') -Force
     cmd /c "sc.exe stop VendorUpd >nul 2>&1"
     cmd /c "sc.exe delete VendorUpd >nul 2>&1"
     Start-Sleep -Milliseconds 500
     cmd /c 'sc.exe create VendorUpd binPath= "C:\Program Files\Vendor Update\update.exe" start= demand DisplayName= VendorUpdateHelper >nul 2>&1' | Out-Null
-    # sc.exe keeps the quotes above; rewrite ImagePath unquoted on purpose
     Set-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Services\VendorUpd' -Name 'ImagePath' `
         -Value 'C:\Program Files\Vendor Update\update.exe'
 } { [bool](Get-Service -Name 'VendorUpd' -EA SilentlyContinue) }
 
-Plant 'W2-18' 'rogue auto-start service HLPrintHelp' {
+Plant 'WH-05' 'rogue auto-start service HLPrintHelp' {
     $svcDir = 'C:\ProgramData\PrintNotifyHelper'
     New-Item -ItemType Directory -Force -Path $svcDir | Out-Null
     $svcPs1 = Join-Path $svcDir 'run.ps1'
@@ -236,12 +275,49 @@ Plant 'W2-18' 'rogue auto-start service HLPrintHelp' {
     cmd /c "sc.exe start HLPrintHelp >nul 2>&1"
 } { (Get-Service -Name 'HLPrintHelp' -EA SilentlyContinue).StartType -eq 'Automatic' }
 
-Plant 'W2-19' 'payroll.csv with Everyone Full Control' {
-    New-Item -ItemType Directory -Force -Path (Join-Path $ShareRoot 'HR') | Out-Null
-    $pay = Join-Path $ShareRoot 'HR\payroll.csv'
-    Set-Content $pay -Value "name,salary`r`nalice,90000`r`n" -Encoding ASCII
-    cmd /c "icacls `"$pay`" /grant Everyone:F >nul 2>&1" | Out-Null
-} { Test-Path (Join-Path $ShareRoot 'HR\payroll.csv') }
+# ========== VERY HARD (20) ==========
+Plant 'WV-01' 'scheduled task disguised as maintenance' {
+    $dir = 'C:\ProgramData\Microsoft\Cache'
+    New-Item -ItemType Directory -Force -Path $dir | Out-Null
+    Set-Content (Join-Path $dir 'clean.ps1') -Value 'Start-Sleep -Seconds 2' -Encoding ASCII
+    $tr = "powershell.exe -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$dir\clean.ps1`""
+    cmd /c "schtasks /Delete /TN `"\Microsoft\Windows\Maintenance\CacheCleanup`" /F >nul 2>&1"
+    cmd /c "schtasks /Create /TN `"\Microsoft\Windows\Maintenance\CacheCleanup`" /SC HOURLY /RU SYSTEM /TR `"$tr`" /F >nul 2>&1"
+    if (-not (Get-ScheduledTask -TaskName 'CacheCleanup' -EA SilentlyContinue)) {
+        cmd /c "schtasks /Create /TN CacheCleanup /SC HOURLY /RU SYSTEM /TR `"$tr`" /F >nul 2>&1"
+    }
+} { [bool](Get-ScheduledTask -TaskName 'CacheCleanup' -EA SilentlyContinue) }
+
+Plant 'WV-02' 'extra program on Winlogon Userinit' {
+    Copy-Item "$env:SystemRoot\System32\hostname.exe" 'C:\ProgramData\updater.exe' -Force
+    $wl = 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon'
+    New-ItemProperty -Path $wl -Name 'Userinit' -PropertyType String -Force `
+        -Value 'C:\Windows\system32\userinit.exe,C:\ProgramData\updater.exe' | Out-Null
+} { (Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon').Userinit -match 'updater\.exe' }
+
+Plant 'WV-03' 'anonymous null sessions allowed' {
+    New-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Services\LanmanServer\Parameters' `
+        -Name 'RestrictNullSessAccess' -Value 0 -PropertyType DWord -Force | Out-Null
+} { (Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Services\LanmanServer\Parameters').RestrictNullSessAccess -eq 0 }
+
+# ========== ALMOST IMPOSSIBLE (25) ==========
+Plant 'WI-01' 'Magnifier IFEO debugger (not Sticky Keys)' {
+    $ifeo = 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options\magnify.exe'
+    New-Item -Path $ifeo -Force | Out-Null
+    New-ItemProperty -Path $ifeo -Name 'Debugger' -Value 'C:\Windows\System32\cmd.exe' -PropertyType String -Force | Out-Null
+} { (Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options\magnify.exe').Debugger }
+
+Plant 'WI-02' 'local Group Policy machine startup script' {
+    $dir = Join-Path $env:SystemRoot 'System32\GroupPolicy\Machine\Scripts\Startup'
+    New-Item -ItemType Directory -Force -Path $dir | Out-Null
+    Set-Content (Join-Path $dir 'lab-sync.bat') -Value "@echo off`r`n" -Encoding ASCII
+    $ini = Join-Path $env:SystemRoot 'System32\GroupPolicy\Machine\Scripts\scripts.ini'
+    @"
+[Startup]
+0CmdLine=lab-sync.bat
+0Parameters=
+"@ | Set-Content -Path $ini -Encoding ASCII
+} { [bool](Select-String -Path (Join-Path $env:SystemRoot 'System32\GroupPolicy\Machine\Scripts\scripts.ini') -Pattern 'lab-sync' -Quiet -EA SilentlyContinue) }
 
 # ---- score agent ----
 $agent = Join-Path $LabRoot 'score_agent.ps1'
@@ -277,9 +353,16 @@ DCIG SYSTEM HARDENING - PHASE 2 (Windows)
 Host: $env:COMPUTERNAME     Team: $Team
 
 GOAL
-  Find and fix security problems on this machine. A score agent checks the
-  machine about once a minute and awards points on its own - there is
-  nothing to type in. Watch your points on the Desktop "DCIG Scoreboard".
+  25 findings. A score agent checks the machine about once a minute and
+  awards points on its own - there is nothing to type in.
+  Watch your points on the Desktop "DCIG Scoreboard".
+
+  Easy               8 x  5 =  40
+  Medium             7 x 10 =  70
+  Hard               5 x 15 =  75
+  Very hard          3 x 20 =  60
+  Almost impossible  2 x 25 =  50
+  This box max: 295
 
 RULES
   - Keep Remote Desktop working: leave port 3389 and the
@@ -295,25 +378,34 @@ $($userLines -join "`r`n")
   Built-in accounts (Guest, DefaultAccount, WDAGUtilityAccount) stay on the
   system, but they must not be usable.
 
-WHAT TO HUNT FOR  (easy -> hard)
-  - Accounts that should not exist, are enabled, or are admins
-  - Antivirus: Windows Defender real-time protection
-  - User Account Control (UAC)
-  - Overly open file shares and file permissions
-  - Accessibility tools hijacked for a login-screen backdoor
-  - Remote Desktop security (Network Level Authentication)
+WHAT TO HUNT FOR
+  - Accounts that should not exist, are enabled, or are administrators
+  - The all-users Startup folder, scheduled tasks, and services
+  - Programs that should not be installed, and plaintext password files
+  - The hosts file
+  - File shares and file permissions
   - Firewall rules that open unexpected ports
-  - Auto-logon with a stored password
-  - Credential caching and old authentication settings
-  - Remote management services and their encryption
-  - Services that are unexpected or have unsafe paths
-  - Installer policies that grant admin rights
+  - Antivirus real-time protection
+  - Remote Desktop Network Level Authentication
+  - Auto-logon and a stored password
+  - Installer policy that lets a normal user install as admin
+  - Credential caching, anonymous access, and old authentication settings
+  - Service paths that are not quoted
+  - Winlogon (what runs at logon)
+  - Accessibility programs set to open a debugger
+  - Local Group Policy startup scripts
 
 USEFUL TOOLS  (Start > Run, or Win+R)
-  lusrmgr.msc   users and groups        services.msc   services
-  wf.msc        firewall                fsmgmt.msc     shared folders
-  regedit       registry                secpol.msc     local security policy
-  gpedit.msc    group policy            Windows Security (Start menu)
+  lusrmgr.msc   users and groups        services.msc    services
+  taskschd.msc  scheduled tasks         wf.msc          firewall
+  fsmgmt.msc    shared folders          regedit         registry
+  secpol.msc    local security policy   gpedit.msc      group policy
+  notepad C:\Windows\System32\drivers\etc\hosts
+  Windows Security (Start menu)
+
+The Linux box is a different set of problems. A few ideas appear on both
+(leftover accounts, too much privilege, a firewall hole, plaintext passwords,
+something that starts by itself) because those matter on every system.
 "@
 $phase2 | Set-Content (Join-Path $LabRoot 'PHASE2.txt') -Encoding ASCII
 Copy-Item (Join-Path $LabRoot 'PHASE2.txt') (Join-Path $PubDesk 'PHASE2.txt') -Force -EA SilentlyContinue
